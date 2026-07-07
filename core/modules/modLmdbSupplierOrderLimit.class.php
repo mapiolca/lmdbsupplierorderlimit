@@ -29,8 +29,8 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 		$this->family = 'Les Métiers du Bâtiment';
 		$this->module_position = 90;
 		$this->name = preg_replace('/^mod/i', '', get_class($this));
-		$this->description = 'Supplier order approval limits';
-		$this->descriptionlong = 'Adds user and group approval limits on native supplier order approval.';
+		$this->description = 'LmdbSupplierOrderLimitDescription';
+		$this->descriptionlong = 'LmdbSupplierOrderLimitDescription';
 		$this->version = '1.0.0';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->rights_class);
 		$this->picto = 'supplier_order';
