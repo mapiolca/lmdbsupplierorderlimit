@@ -183,13 +183,18 @@ if ($searchActive !== '') {
 }
 
 $listObject = new LmdbSupplierOrderLimitLimit($db);
-$num = $listObject->countAll($filters);
+$totalnboflines = $listObject->countAll($filters);
+if ($totalnboflines < 0) {
+	setEventMessages($listObject->error, $listObject->errors, 'errors');
+	$totalnboflines = 0;
+}
 $records = $listObject->fetchAll($limit, $offset, $filters, $sortfield, $sortorder);
 if (!is_array($records)) {
 	setEventMessages($listObject->error, $listObject->errors, 'errors');
 	$records = array();
-	$num = 0;
+	$totalnboflines = 0;
 }
+$num = count($records);
 if ($modalToOpen === '' && $permissiontowrite && $action === 'create_form') {
 	$modalToOpen = 'lmdbsupplierorderlimit-limit-modal-create';
 }
@@ -236,7 +241,7 @@ if ($permissiontowrite) {
 	);
 }
 
-print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $num, 'object_lmdbsupplierorderlimit', 0, $newcardbutton, '', $limit);
+print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $totalnboflines, 'object_lmdbsupplierorderlimit', 0, $newcardbutton, '', $limit);
 
 if ($action === 'delete' && $permissiontodelete && $id > 0) {
 	print $form->formconfirm(

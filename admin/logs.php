@@ -86,13 +86,18 @@ if ($searchDateEnd !== null) {
 }
 
 $logObject = new LmdbSupplierOrderLimitLog($db);
-$num = $logObject->countAll($filters);
+$totalnboflines = $logObject->countAll($filters);
+if ($totalnboflines < 0) {
+	setEventMessages($logObject->error, $logObject->errors, 'errors');
+	$totalnboflines = 0;
+}
 $records = $logObject->fetchAll($limit, $offset, $filters, $sortfield, $sortorder);
 if (!is_array($records)) {
 	setEventMessages($logObject->error, $logObject->errors, 'errors');
 	$records = array();
-	$num = 0;
+	$totalnboflines = 0;
 }
+$num = count($records);
 
 $param = '';
 if ($searchUser > 0) {
@@ -132,7 +137,7 @@ print load_fiche_titre($langs->trans('LmdbSupplierOrderLimitLogs'), $linkback, '
 $head = lmdbsupplierorderlimitAdminPrepareHead();
 print dol_get_fiche_head($head, 'logs', $langs->trans('LmdbSupplierOrderLimit'), -1, 'supplier_order');
 
-print_barre_liste($langs->trans('LmdbSupplierOrderLimitLogs'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $num, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
+print_barre_liste($langs->trans('LmdbSupplierOrderLimitLogs'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $totalnboflines, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
 
 print '<form id="logfilter" method="GET" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="sortfield" value="'.dol_escape_htmltag($sortfield).'">';
