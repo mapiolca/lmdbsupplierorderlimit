@@ -14,7 +14,7 @@ Droit Dolibarr natif d’approbation fournisseur
 Plafond actif utilisateur ou groupe
 ```
 
-Une commande fournisseur peut être approuvée au premier niveau si son `total_ht` est inférieur ou égal au plafond applicable. Lorsque l’utilisateur possède aussi le droit natif de second niveau `approve2`, le module laisse l’approbation de premier niveau suivre le chemin natif Dolibarr et applique le plafond uniquement à l’approbation de second niveau.
+Pour un utilisateur qui possède uniquement le droit natif `approuver`, le premier niveau reste soumis au plafond applicable. Lorsque l’utilisateur possède aussi le droit natif de second niveau `approve2`, le module laisse l’approbation de premier niveau suivre le chemin natif Dolibarr et applique le plafond uniquement à l’approbation de second niveau. Si le plafond bloque le second niveau, le module force temporairement le workflow natif de seconde approbation pour empêcher une approbation complète automatique.
 
 Par défaut, l’absence de plafond utilisateur ou groupe signifie que l’utilisateur n’a pas de plafond financier imposé par le module. Pour refuser explicitement un utilisateur, créer un plafond actif à `0` ou configurer le comportement global sans plafond sur `Refuser`.
 

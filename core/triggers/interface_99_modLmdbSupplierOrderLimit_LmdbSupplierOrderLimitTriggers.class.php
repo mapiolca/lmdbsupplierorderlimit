@@ -27,6 +27,8 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 	public $version = '1.0.0';
 	/** @var string */
 	public $picto = 'supplier_order';
+	/** @var int|null */
+	private $detectedSupplierOrderStatus;
 
 	/**
 	 * Constructor.
@@ -83,6 +85,17 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 			return -1;
 		}
 
+		if ($approvalLevel === 1 && $this->isDetectedSupplierOrderAccepted()) {
+			$secondLevelDecision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 2);
+			$secondLevelReason = isset($secondLevelDecision['reason']) ? (string) $secondLevelDecision['reason'] : '';
+			if (empty($secondLevelDecision['allowed']) && $secondLevelReason !== 'native_permission_missing') {
+				$message = LmdbSupplierOrderLimitAuthorizer::formatDecisionMessage($secondLevelDecision);
+				$this->error = $message;
+				LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $secondLevelDecision, 'approval_trigger_denied', 'trigger', $message);
+				return -1;
+			}
+		}
+
 		LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $decision, 'approval_allowed', 'trigger', 'allowed');
 
 		return 0;
@@ -102,7 +115,7 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 			return -1;
 		}
 
-		$sql = 'SELECT c.fk_user_approve, c.fk_user_approve2, c.date_approve, c.date_approve2';
+		$sql = 'SELECT c.fk_user_approve, c.fk_user_approve2, c.date_approve, c.date_approve2, c.fk_statut';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.'commande_fournisseur AS c';
 		$sql .= ' WHERE c.rowid = '.((int) $id);
 		if (isset($object->entity) && (int) $object->entity > 0) {
@@ -121,6 +134,7 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 			return -1;
 		}
 
+		$this->detectedSupplierOrderStatus = isset($row->fk_statut) ? (int) $row->fk_statut : null;
 		$currentFirstUserId = !empty($row->fk_user_approve) ? (int) $row->fk_user_approve : null;
 		$currentSecondUserId = !empty($row->fk_user_approve2) ? (int) $row->fk_user_approve2 : null;
 		$currentFirstDate = $this->normalizeDateForComparison($row->date_approve);
@@ -143,6 +157,24 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 
 		$this->error = 'Unable to detect supplier order approval level';
 		return -1;
+	}
+
+	/**
+	 * Check if the current SQL row already reached the native accepted supplier order status.
+	 *
+	 * @return bool
+	 */
+	private function isDetectedSupplierOrderAccepted()
+	{
+		if ($this->detectedSupplierOrderStatus === null) {
+			return false;
+		}
+
+		if (class_exists('CommandeFournisseur') && defined('CommandeFournisseur::STATUS_ACCEPTED')) {
+			return (int) $this->detectedSupplierOrderStatus === (int) constant('CommandeFournisseur::STATUS_ACCEPTED');
+		}
+
+		return false;
 	}
 
 	/**

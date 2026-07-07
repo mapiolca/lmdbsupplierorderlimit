@@ -73,6 +73,10 @@ class ActionsLmdbSupplierOrderLimit
 				return 1;
 			}
 
+			if ($approvalLevel === 1) {
+				$this->forceNativeSecondLevelApprovalIfNeeded($object);
+			}
+
 			LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $decision, 'approval_allowed', 'hook', 'allowed');
 			return 0;
 		}
@@ -85,6 +89,8 @@ class ActionsLmdbSupplierOrderLimit
 				if ($action === 'confirm_valid') {
 					LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $decision, 'approval_direct_validate_blocked', 'hook', 'direct validate approval blocked');
 				}
+			} else {
+				$this->forceNativeSecondLevelApprovalIfNeeded($object);
 			}
 		}
 
@@ -120,6 +126,8 @@ class ActionsLmdbSupplierOrderLimit
 			$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 1);
 			if (empty($decision['allowed'])) {
 				$conf->global->SUPPLIER_ORDER_NO_DIRECT_APPROVE = 1;
+			} else {
+				$this->forceNativeSecondLevelApprovalIfNeeded($object);
 			}
 			return 0;
 		}
@@ -129,6 +137,7 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		if ($user->hasRight('fournisseur', 'commande', 'approve2')) {
+			$this->forceNativeSecondLevelApprovalIfNeeded($object);
 			return 0;
 		}
 
@@ -183,5 +192,41 @@ class ActionsLmdbSupplierOrderLimit
 		global $langs;
 
 		return ((int) $approvalLevel === 2) ? $langs->trans('Approve2Order') : $langs->trans('ApproveOrder');
+	}
+
+	/**
+	 * Force Dolibarr native second approval path for this request when module limit blocks level 2.
+	 *
+	 * @param mixed $object Supplier order object
+	 * @return void
+	 */
+	private function forceNativeSecondLevelApprovalIfNeeded($object)
+	{
+		global $conf, $user;
+
+		$secondLevelDecision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 2);
+		$reason = isset($secondLevelDecision['reason']) ? (string) $secondLevelDecision['reason'] : '';
+		if (!empty($secondLevelDecision['allowed']) || $reason === 'native_permission_missing') {
+			return;
+		}
+
+		// Runtime-only override: it makes core approve() keep status validated after first approval without changing persisted Dolibarr settings.
+		$conf->global->SUPPLIER_ORDER_3_STEPS_TO_BE_APPROVED = $this->getNativeSecondLevelThreshold($object);
+	}
+
+	/**
+	 * Return a threshold that makes the current order enter the native second approval workflow.
+	 *
+	 * @param mixed $object Supplier order object
+	 * @return string
+	 */
+	private function getNativeSecondLevelThreshold($object)
+	{
+		$orderAmount = is_object($object) && isset($object->total_ht) ? LmdbSupplierOrderLimitAuthorizer::normalizeAmount($object->total_ht) : null;
+		if ($orderAmount !== null && LmdbSupplierOrderLimitAuthorizer::compareDecimalAmount($orderAmount, '0') > 0) {
+			return $orderAmount;
+		}
+
+		return '0.00000001';
 	}
 }
