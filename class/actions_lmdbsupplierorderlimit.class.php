@@ -138,6 +138,10 @@ class ActionsLmdbSupplierOrderLimit
 
 		if ($user->hasRight('fournisseur', 'commande', 'approve2')) {
 			$this->forceNativeSecondLevelApprovalIfNeeded($object);
+			$secondLevelDecision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 2);
+			if (empty($secondLevelDecision['allowed']) && (!isset($secondLevelDecision['reason']) || $secondLevelDecision['reason'] !== 'native_permission_missing')) {
+				$this->printDisableSecondLevelApprovalScript($this->getDeniedMessage($secondLevelDecision));
+			}
 			return 0;
 		}
 
@@ -228,5 +232,37 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		return '0.00000001';
+	}
+
+	/**
+	 * Disable the native second-level approval button without replacing the whole native action bar.
+	 *
+	 * @param string $message Tooltip message
+	 * @return void
+	 */
+	private function printDisableSecondLevelApprovalScript($message)
+	{
+		$messageJson = json_encode($message, JSON_HEX_TAG | JSON_HEX_AMP | JSON_HEX_APOS | JSON_HEX_QUOT);
+		if ($messageJson === false) {
+			$messageJson = '""';
+		}
+
+		print '<script>
+jQuery(function() {
+	var deniedMessage = '.$messageJson.';
+	jQuery(\'a.butAction[href*="action=approve2"]\').each(function() {
+		jQuery(this)
+			.removeClass(\'butAction\')
+			.addClass(\'butActionRefused classfortooltip\')
+			.attr(\'href\', \'#\')
+			.attr(\'aria-disabled\', \'true\')
+			.attr(\'title\', deniedMessage)
+			.on(\'click.lmdbsupplierorderlimit\', function(event) {
+				event.preventDefault();
+				return false;
+			});
+	});
+});
+</script>';
 	}
 }
