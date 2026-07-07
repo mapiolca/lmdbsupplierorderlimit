@@ -113,6 +113,7 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		$langs->load('lmdbsupplierorderlimit@lmdbsupplierorderlimit');
+		$langs->load('orders');
 		$status = isset($object->statut) ? (int) $object->statut : (isset($object->status) ? (int) $object->status : -1);
 
 		if ($status === 0 && $user->hasRight('fournisseur', 'commande', 'approuver')) {
@@ -134,7 +135,7 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		$message = $this->getDeniedMessage($decision);
-		print '<span class="butActionRefused classfortooltip" title="'.dol_escape_htmltag($message).'">'.$langs->trans('Approve').'</span>';
+		print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($message).'">'.$this->getNativeApprovalButtonLabel($approvalLevel).'</a>';
 
 		return 1;
 	}
@@ -166,5 +167,18 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		return $langs->trans('LmdbSupplierOrderLimitApprovalDenied');
+	}
+
+	/**
+	 * Return the native supplier order approval button label.
+	 *
+	 * @param int $approvalLevel Approval level
+	 * @return string
+	 */
+	private function getNativeApprovalButtonLabel($approvalLevel)
+	{
+		global $langs;
+
+		return ((int) $approvalLevel === 2) ? $langs->trans('Approve2Order') : $langs->trans('ApproveOrder');
 	}
 }

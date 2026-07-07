@@ -11,3 +11,4 @@
 - Correction de la compatibilité CSRF avec les versions Dolibarr où `checkToken()` n’existe pas.
 - Formatage des montants de refus avec le réglage Dolibarr d’arrondi des totaux.
 - Accès complet pour super-administrateur, administrateur et administrateur Multicompany.
+- Alignement du libellé du bouton d’approbation refusé sur les clés natives des commandes fournisseurs.
