@@ -61,6 +61,30 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	public $ip;
 	/** @var string|null */
 	public $user_agent;
+	/** @var string|null */
+	public $user_login;
+	/** @var string|null */
+	public $user_lastname;
+	/** @var string|null */
+	public $user_firstname;
+	/** @var string|null */
+	public $user_photo;
+	/** @var int|null */
+	public $user_status;
+	/** @var string|null */
+	public $user_email;
+	/** @var int|null */
+	public $user_admin;
+	/** @var int|null */
+	public $user_entity;
+	/** @var string|null */
+	public $supplier_order_ref;
+	/** @var int|null */
+	public $supplier_order_status;
+	/** @var int|null */
+	public $supplier_order_entity;
+	/** @var string|null */
+	public $supplier_order_total_ht;
 
 	/**
 	 * Field definitions.
@@ -187,19 +211,26 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	 * @param int                  $limit   Limit
 	 * @param int                  $offset  Offset
 	 * @param array<string, mixed> $filters Filters
+	 * @param string               $sortfield Sort field
+	 * @param string               $sortorder Sort order
 	 * @return array<int, LmdbSupplierOrderLimitLog>|int
 	 */
-	public function fetchAll($limit = 100, $offset = 0, $filters = array())
+	public function fetchAll($limit = 100, $offset = 0, $filters = array(), $sortfield = '', $sortorder = '')
 	{
 		global $conf;
 
 		$records = array();
 		$sql = 'SELECT t.rowid, t.entity, t.event_type, t.decision, t.fk_supplier_order, t.fk_user_action,';
-		$sql .= ' t.order_total_ht, t.limit_amount_ht, t.limit_unlimited, t.limit_source, t.fk_limit, t.reason_code, t.origin, t.message, t.date_creation, t.ip, t.user_agent';
+		$sql .= ' t.order_total_ht, t.limit_amount_ht, t.limit_unlimited, t.limit_source, t.fk_limit, t.reason_code, t.origin, t.message, t.date_creation, t.ip, t.user_agent,';
+		$sql .= ' u.login AS user_login, u.lastname AS user_lastname, u.firstname AS user_firstname, u.photo AS user_photo,';
+		$sql .= ' u.statut AS user_status, u.email AS user_email, u.admin AS user_admin, u.entity AS user_entity,';
+		$sql .= ' cf.ref AS supplier_order_ref, cf.fk_statut AS supplier_order_status, cf.entity AS supplier_order_entity, cf.total_ht AS supplier_order_total_ht';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'user AS u ON u.rowid = t.fk_user_action';
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'commande_fournisseur AS cf ON cf.rowid = t.fk_supplier_order';
 		$sql .= ' WHERE t.entity = '.((int) $conf->entity);
 		$sql .= $this->buildWhereFromFilters($filters);
-		$sql .= ' ORDER BY t.date_creation DESC, t.rowid DESC';
+		$sql .= $this->buildOrderBy($sortfield, $sortorder);
 		$sql .= $this->db->plimit((int) $limit, (int) $offset);
 
 		$resql = $this->db->query($sql);
@@ -229,6 +260,7 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 
 		$sql = 'SELECT COUNT(t.rowid) AS nb';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'commande_fournisseur AS cf ON cf.rowid = t.fk_supplier_order';
 		$sql .= ' WHERE t.entity = '.((int) $conf->entity);
 		$sql .= $this->buildWhereFromFilters($filters);
 
@@ -316,6 +348,63 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 		$this->date_creation = $this->db->jdate($obj->date_creation);
 		$this->ip = $obj->ip !== null ? (string) $obj->ip : null;
 		$this->user_agent = $obj->user_agent !== null ? (string) $obj->user_agent : null;
+		$this->user_login = property_exists($obj, 'user_login') && $obj->user_login !== null ? (string) $obj->user_login : null;
+		$this->user_lastname = property_exists($obj, 'user_lastname') && $obj->user_lastname !== null ? (string) $obj->user_lastname : null;
+		$this->user_firstname = property_exists($obj, 'user_firstname') && $obj->user_firstname !== null ? (string) $obj->user_firstname : null;
+		$this->user_photo = property_exists($obj, 'user_photo') && $obj->user_photo !== null ? (string) $obj->user_photo : null;
+		$this->user_status = property_exists($obj, 'user_status') && $obj->user_status !== null ? (int) $obj->user_status : null;
+		$this->user_email = property_exists($obj, 'user_email') && $obj->user_email !== null ? (string) $obj->user_email : null;
+		$this->user_admin = property_exists($obj, 'user_admin') && $obj->user_admin !== null ? (int) $obj->user_admin : null;
+		$this->user_entity = property_exists($obj, 'user_entity') && $obj->user_entity !== null ? (int) $obj->user_entity : null;
+		$this->supplier_order_ref = property_exists($obj, 'supplier_order_ref') && $obj->supplier_order_ref !== null ? (string) $obj->supplier_order_ref : null;
+		$this->supplier_order_status = property_exists($obj, 'supplier_order_status') && $obj->supplier_order_status !== null ? (int) $obj->supplier_order_status : null;
+		$this->supplier_order_entity = property_exists($obj, 'supplier_order_entity') && $obj->supplier_order_entity !== null ? (int) $obj->supplier_order_entity : null;
+		$this->supplier_order_total_ht = property_exists($obj, 'supplier_order_total_ht') && $obj->supplier_order_total_ht !== null ? (string) $obj->supplier_order_total_ht : null;
+	}
+
+	/**
+	 * Build safe list ORDER BY clause.
+	 *
+	 * @param string $sortfield Sort field
+	 * @param string $sortorder Sort order
+	 * @return string
+	 */
+	private function buildOrderBy($sortfield, $sortorder)
+	{
+		$allowedSortFields = array(
+			't.rowid' => 't.rowid',
+			'u.lastname' => 'u.lastname',
+			'u.firstname' => 'u.firstname',
+			'u.login' => 'u.login',
+			'cf.ref' => 'cf.ref',
+			't.decision' => 't.decision',
+			't.event_type' => 't.event_type',
+			't.reason_code' => 't.reason_code',
+			't.date_creation' => 't.date_creation',
+			't.message' => 't.message',
+		);
+
+		$orderBy = array();
+		$sortFields = array_map('trim', explode(',', $sortfield));
+		$sortOrders = array_map('trim', explode(',', strtoupper($sortorder)));
+
+		foreach ($sortFields as $key => $field) {
+			if (!isset($allowedSortFields[$field])) {
+				continue;
+			}
+
+			$order = isset($sortOrders[$key]) ? $sortOrders[$key] : (isset($sortOrders[0]) ? $sortOrders[0] : 'ASC');
+			$order = $order === 'ASC' ? 'ASC' : 'DESC';
+			$orderBy[] = $allowedSortFields[$field].' '.$order;
+		}
+
+		if (empty($orderBy)) {
+			$orderBy[] = 't.date_creation DESC';
+		}
+
+		$orderBy[] = 't.rowid DESC';
+
+		return ' ORDER BY '.implode(', ', $orderBy);
 	}
 
 	/**
@@ -331,8 +420,13 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 		if (!empty($filters['fk_user_action'])) {
 			$sql .= ' AND t.fk_user_action = '.((int) $filters['fk_user_action']);
 		}
-		if (!empty($filters['fk_supplier_order'])) {
-			$sql .= ' AND t.fk_supplier_order = '.((int) $filters['fk_supplier_order']);
+		if (!empty($filters['supplier_order'])) {
+			$searchSupplierOrder = (string) $filters['supplier_order'];
+			$sql .= " AND (cf.ref LIKE '%".$this->db->escape($searchSupplierOrder)."%'";
+			if (ctype_digit($searchSupplierOrder)) {
+				$sql .= ' OR t.fk_supplier_order = '.((int) $searchSupplierOrder);
+			}
+			$sql .= ')';
 		}
 		if (isset($filters['decision']) && $filters['decision'] !== '' && $filters['decision'] !== null) {
 			$sql .= ' AND t.decision = '.((int) $filters['decision']);

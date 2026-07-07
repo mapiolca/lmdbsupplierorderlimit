@@ -17,3 +17,7 @@
 - Ajout du comportement sans plafond `Illimité`, utilisé par défaut lorsque aucun plafond utilisateur ou groupe n’est défini.
 - Ajustement du contrôle des plafonds pour distinguer l’approbation premier niveau de l’approbation second niveau, avec forçage runtime du workflow natif de seconde approbation lorsque le plafond bloque le second niveau.
 - Désactivation visuelle du bouton natif d’approbation second niveau lorsque le plafond applicable est insuffisant.
+- Alignement de la liste des plafonds sur les filtres, tris et boutons de recherche/réinitialisation natifs Dolibarr.
+- Ouverture des formulaires de création et modification de plafond dans des modales depuis le bouton `+` natif et l’icône d’édition.
+- Alignement de la liste des journaux sur les filtres, tris, pagination et boutons de recherche/réinitialisation natifs Dolibarr, avec liens natifs vers les utilisateurs et commandes fournisseurs.
+- Traduction des codes de journaux affichés pour les types d’événements, raisons et messages.

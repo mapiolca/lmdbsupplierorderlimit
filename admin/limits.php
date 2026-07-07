@@ -25,11 +25,32 @@ $action = GETPOST('action', 'aZ09');
 $id = GETPOSTINT('id');
 $page = GETPOSTINT('page');
 $limit = GETPOSTINT('limit') > 0 ? GETPOSTINT('limit') : getDolGlobalInt('MAIN_SIZE_LISTE_LIMIT', 20);
-$offset = $limit * max(0, $page);
+$sortfield = GETPOST('sortfield', 'aZ09comma');
+$sortorder = GETPOST('sortorder', 'aZ09comma');
 
 $searchUser = GETPOSTINT('search_user');
 $searchGroup = GETPOSTINT('search_group');
 $searchActive = GETPOST('search_active', 'int');
+$buttonSearch = GETPOSTISSET('button_search') || GETPOSTISSET('button_search_x') || GETPOSTISSET('button_search.x');
+$buttonRemoveFilter = GETPOSTISSET('button_removefilter') || GETPOSTISSET('button_removefilter_x') || GETPOSTISSET('button_removefilter.x');
+
+if (!$sortfield) {
+	$sortfield = 't.active';
+}
+if (!$sortorder) {
+	$sortorder = 'DESC';
+}
+
+if (empty($page) || $page < 0 || $buttonSearch || $buttonRemoveFilter) {
+	$page = 0;
+}
+$offset = $limit * max(0, $page);
+
+if ($buttonRemoveFilter) {
+	$searchUser = 0;
+	$searchGroup = 0;
+	$searchActive = '';
+}
 
 if (!isModEnabled('lmdbsupplierorderlimit')) {
 	accessforbidden();
@@ -48,6 +69,8 @@ $sensitiveActions = array('create', 'update', 'disable', 'delete');
 
 $form = new Form($db);
 $token = newToken();
+$formObjectWithErrors = null;
+$modalToOpen = '';
 
 if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 	$object = new LmdbSupplierOrderLimitLimit($db);
@@ -58,17 +81,19 @@ if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 		}
 	}
 
-	$targetType = GETPOST('target_type', 'alpha');
+	$fieldPrefixValue = GETPOST('field_prefix', 'aZ09');
+	$fieldPrefix = $fieldPrefixValue !== '' ? $fieldPrefixValue.'_' : '';
+	$targetType = GETPOST($fieldPrefix.'target_type', 'alpha');
 	$object->id = $id;
 	$object->rowid = $id;
-	$object->fk_user = $targetType === 'user' ? GETPOSTINT('fk_user') : null;
-	$object->fk_usergroup = $targetType === 'group' ? GETPOSTINT('fk_usergroup') : null;
-	$object->amount_ht = GETPOST('amount_ht', 'restricthtml');
-	$object->unlimited = GETPOSTINT('unlimited');
-	$object->active = GETPOSTINT('active');
-	$object->date_start = lmdbsupplierorderlimitAdminGetPostedDate('date_start');
-	$object->date_end = lmdbsupplierorderlimitAdminGetPostedDate('date_end');
-	$object->note_private = GETPOST('note_private', 'restricthtml');
+	$object->fk_user = $targetType === 'user' ? GETPOSTINT($fieldPrefix.'fk_user') : null;
+	$object->fk_usergroup = $targetType === 'group' ? GETPOSTINT($fieldPrefix.'fk_usergroup') : null;
+	$object->amount_ht = GETPOST($fieldPrefix.'amount_ht', 'restricthtml');
+	$object->unlimited = GETPOSTINT($fieldPrefix.'unlimited');
+	$object->active = GETPOSTINT($fieldPrefix.'active');
+	$object->date_start = lmdbsupplierorderlimitAdminGetPostedDate($fieldPrefix.'date_start');
+	$object->date_end = lmdbsupplierorderlimitAdminGetPostedDate($fieldPrefix.'date_end');
+	$object->note_private = GETPOST($fieldPrefix.'note_private', 'restricthtml');
 
 	$result = $action === 'create' ? $object->create($user) : $object->update($user);
 	if ($result > 0) {
@@ -87,6 +112,8 @@ if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 		exit;
 	}
 
+	$formObjectWithErrors = $object;
+	$modalToOpen = $action === 'create' ? 'lmdbsupplierorderlimit-limit-modal-create' : 'lmdbsupplierorderlimit-limit-modal-edit-'.((int) $id);
 	setEventMessages($object->error, $object->errors, 'errors');
 }
 
@@ -157,11 +184,17 @@ if ($searchActive !== '') {
 
 $listObject = new LmdbSupplierOrderLimitLimit($db);
 $num = $listObject->countAll($filters);
-$records = $listObject->fetchAll($limit, $offset, $filters);
+$records = $listObject->fetchAll($limit, $offset, $filters, $sortfield, $sortorder);
 if (!is_array($records)) {
 	setEventMessages($listObject->error, $listObject->errors, 'errors');
 	$records = array();
 	$num = 0;
+}
+if ($modalToOpen === '' && $permissiontowrite && $action === 'create_form') {
+	$modalToOpen = 'lmdbsupplierorderlimit-limit-modal-create';
+}
+if ($modalToOpen === '' && $permissiontowrite && $action === 'edit' && $id > 0) {
+	$modalToOpen = 'lmdbsupplierorderlimit-limit-modal-edit-'.((int) $id);
 }
 
 $param = '';
@@ -174,6 +207,8 @@ if ($searchGroup > 0) {
 if ($searchActive !== '') {
 	$param .= '&search_active='.(int) $searchActive;
 }
+$paramList = $param.'&limit='.(int) $limit;
+$listUrlParams = $param.'&sortfield='.urlencode($sortfield).'&sortorder='.urlencode($sortorder).'&page='.(int) $page.'&limit='.(int) $limit;
 
 llxHeader('', $langs->trans('LmdbSupplierOrderLimitLimits'));
 
@@ -183,7 +218,25 @@ print load_fiche_titre($langs->trans('LmdbSupplierOrderLimitLimits'), $linkback,
 $head = lmdbsupplierorderlimitAdminPrepareHead();
 print dol_get_fiche_head($head, 'limits', $langs->trans('LmdbSupplierOrderLimit'), -1, 'supplier_order');
 
-print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, '', '', '', $num, $num, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
+$newcardbutton = '';
+if ($permissiontowrite) {
+	$newcardbutton = dolGetButtonTitle(
+		$langs->trans('New'),
+		'',
+		'fa fa-plus-circle',
+		$_SERVER['PHP_SELF'].'?action=create_form&token='.$token.$listUrlParams,
+		'lmdbsupplierorderlimit-open-create',
+		1,
+		array(
+			'attr' => array(
+				'class' => 'lmdbsupplierorderlimit-open-modal',
+				'data-target' => '#lmdbsupplierorderlimit-limit-modal-create',
+			),
+		)
+	);
+}
+
+print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $num, 'object_lmdbsupplierorderlimit', 0, $newcardbutton, '', $limit);
 
 if ($action === 'delete' && $permissiontodelete && $id > 0) {
 	print $form->formconfirm(
@@ -198,24 +251,27 @@ if ($action === 'delete' && $permissiontodelete && $id > 0) {
 }
 
 print '<form method="GET" action="'.$_SERVER['PHP_SELF'].'">';
+print '<input type="hidden" name="sortfield" value="'.dol_escape_htmltag($sortfield).'">';
+print '<input type="hidden" name="sortorder" value="'.dol_escape_htmltag($sortorder).'">';
+print '<input type="hidden" name="limit" value="'.((int) $limit).'">';
 print '<table class="liste centpercent">';
 print '<tr class="liste_titre_filter">';
-print '<td>'.$form->select_dolusers($searchUser, 'search_user', 1).'</td>';
-print '<td>'.$form->select_dolgroups($searchGroup, 'search_group', 1).'</td>';
-print '<td></td>';
-print '<td></td>';
-print '<td>'.$form->selectyesno('search_active', $searchActive, 1, false, 1).'</td>';
-print '<td></td>';
-print '<td class="center"><input type="submit" class="button small" value="'.$langs->trans('Search').'"></td>';
+print '<td class="liste_titre">'.$form->select_dolusers($searchUser, 'search_user', 1).'</td>';
+print '<td class="liste_titre">'.$form->select_dolgroups($searchGroup, 'search_group', 1).'</td>';
+print '<td class="liste_titre"></td>';
+print '<td class="liste_titre"></td>';
+print '<td class="liste_titre center">'.$form->selectyesno('search_active', $searchActive, 1, false, 1).'</td>';
+print '<td class="liste_titre"></td>';
+print '<td class="liste_titre center maxwidthsearch">'.$form->showFilterButtons().'</td>';
 print '</tr>';
 print '<tr class="liste_titre">';
-print '<th>'.$langs->trans('LmdbSupplierOrderLimitUser').'</th>';
-print '<th>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</th>';
-print '<th class="right">'.$langs->trans('LmdbSupplierOrderLimitAmountHt').'</th>';
-print '<th class="center">'.$langs->trans('LmdbSupplierOrderLimitUnlimited').'</th>';
-print '<th class="center">'.$langs->trans('Status').'</th>';
-print '<th>'.$langs->trans('Date').'</th>';
-print '<th class="right">'.$langs->trans('Action').'</th>';
+print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitUser'), $_SERVER['PHP_SELF'], 'u.lastname', '', $paramList, '', $sortfield, $sortorder);
+print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitGroup'), $_SERVER['PHP_SELF'], 'ug.nom', '', $paramList, '', $sortfield, $sortorder);
+print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitAmountHt'), $_SERVER['PHP_SELF'], 't.amount_ht', '', $paramList, '', $sortfield, $sortorder, 'right ');
+print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitUnlimited'), $_SERVER['PHP_SELF'], 't.unlimited', '', $paramList, '', $sortfield, $sortorder, 'center ');
+print_liste_field_titre($langs->trans('Status'), $_SERVER['PHP_SELF'], 't.active', '', $paramList, '', $sortfield, $sortorder, 'center ');
+print_liste_field_titre($langs->trans('Date'), $_SERVER['PHP_SELF'], 't.date_start', '', $paramList, '', $sortfield, $sortorder);
+print_liste_field_titre($langs->trans('Action'), $_SERVER['PHP_SELF'], '', '', $paramList, '', $sortfield, $sortorder, 'right ');
 print '</tr>';
 
 if (count($records) === 0) {
@@ -232,13 +288,13 @@ foreach ($records as $record) {
 	print '<td>'.(!empty($record->date_start) ? dol_print_date((int) $record->date_start, 'day') : '').' - '.(!empty($record->date_end) ? dol_print_date((int) $record->date_end, 'day') : '').'</td>';
 	print '<td class="right">';
 	if ($permissiontowrite) {
-		print '<a class="editfielda" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.'&token='.$token.$param.'">'.img_edit().'</a> ';
+		print '<a class="editfielda lmdbsupplierorderlimit-open-modal" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.'&token='.$token.$listUrlParams.'" data-target="#lmdbsupplierorderlimit-limit-modal-edit-'.((int) $record->id).'">'.img_edit().'</a> ';
 	}
 	if ($permissiontodelete && !empty($record->active)) {
-		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.$param.'">'.img_picto($langs->trans('Disable'), 'disable').'</a> ';
+		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_picto($langs->trans('Disable'), 'disable').'</a> ';
 	}
 	if ($permissiontodelete) {
-		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=delete&id='.(int) $record->id.'&token='.$token.$param.'">'.img_delete().'</a>';
+		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=delete&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_delete().'</a>';
 	}
 	print '</td>';
 	print '</tr>';
@@ -248,36 +304,21 @@ print '</table>';
 print '</form>';
 
 if ($permissiontowrite) {
-	$editObject = new LmdbSupplierOrderLimitLimit($db);
-	if ($action === 'edit' && $id > 0) {
-		$editObject->fetch($id);
+	$createObject = new LmdbSupplierOrderLimitLimit($db);
+	if (is_object($formObjectWithErrors) && empty($formObjectWithErrors->id)) {
+		$createObject = $formObjectWithErrors;
+	}
+	lmdbsupplierorderlimitPrintLimitModal($form, $createObject, $token, 'limitcreate', 'lmdbsupplierorderlimit-limit-modal-create', $langs->trans('New'));
+
+	foreach ($records as $record) {
+		$editObject = $record;
+		if (is_object($formObjectWithErrors) && (int) $formObjectWithErrors->id === (int) $record->id) {
+			$editObject = $formObjectWithErrors;
+		}
+		lmdbsupplierorderlimitPrintLimitModal($form, $editObject, $token, 'limitedit'.((int) $record->id), 'lmdbsupplierorderlimit-limit-modal-edit-'.((int) $record->id), $langs->trans('Modify'));
 	}
 
-	$targetType = $editObject->fk_user ? 'user' : ($editObject->fk_usergroup ? 'group' : 'user');
-	print '<br>';
-	print '<form id="limitform" method="POST" action="'.$_SERVER['PHP_SELF'].'">';
-	print '<input type="hidden" name="token" value="'.$token.'">';
-	print '<input type="hidden" name="action" value="'.($editObject->id ? 'update' : 'create').'">';
-	print '<input type="hidden" name="id" value="'.(int) $editObject->id.'">';
-	print '<table class="noborder centpercent">';
-	print '<tr class="liste_titre"><td colspan="2">'.($editObject->id ? $langs->trans('Modify') : $langs->trans('New')).'</td></tr>';
-	print '<tr><td class="titlefieldcreate">'.$langs->trans('LmdbSupplierOrderLimitTargetType').'</td><td>';
-	print '<select name="target_type" id="target_type" class="flat minwidth200">';
-	print '<option value="user"'.($targetType === 'user' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitUser').'</option>';
-	print '<option value="group"'.($targetType === 'group' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</option>';
-	print '</select>'.ajax_combobox('target_type');
-	print '</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUser').'</td><td>'.$form->select_dolusers($editObject->fk_user, 'fk_user', 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</td><td>'.$form->select_dolgroups($editObject->fk_usergroup, 'fk_usergroup', 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitAmountHt').'</td><td><input class="flat right" type="text" name="amount_ht" value="'.dol_escape_htmltag((string) $editObject->amount_ht).'"></td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUnlimited').'</td><td>'.$form->selectyesno('unlimited', (int) $editObject->unlimited, 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitActive').'</td><td>'.$form->selectyesno('active', (int) $editObject->active, 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitDateStart').'</td><td>'.$form->selectDate($editObject->date_start, 'date_start', 0, 0, 1, 'limitform', 1, 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitDateEnd').'</td><td>'.$form->selectDate($editObject->date_end, 'date_end', 0, 0, 1, 'limitform', 1, 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitNotePrivate').'</td><td><textarea class="flat centpercent" name="note_private" rows="3">'.dol_escape_htmltag((string) $editObject->note_private).'</textarea></td></tr>';
-	print '<tr><td></td><td><input type="submit" class="button button-save" value="'.$langs->trans('Save').'"></td></tr>';
-	print '</table>';
-	print '</form>';
+	lmdbsupplierorderlimitPrintLimitModalScript($modalToOpen);
 }
 
 print dol_get_fiche_end();
@@ -302,6 +343,91 @@ function lmdbsupplierorderlimitAdminGetPostedDate($prefix)
 	}
 
 	return dol_mktime(0, 0, 0, $month, $day, $year);
+}
+
+/**
+ * Print a limit form inside a hidden dialog container.
+ *
+ * @param Form                        $form        Form helper
+ * @param LmdbSupplierOrderLimitLimit $editObject  Limit object
+ * @param string                      $token       CSRF token
+ * @param string                      $fieldPrefix Unique HTML field prefix
+ * @param string                      $modalId     Dialog HTML id
+ * @param string                      $title       Dialog title
+ * @return void
+ */
+function lmdbsupplierorderlimitPrintLimitModal($form, $editObject, $token, $fieldPrefix, $modalId, $title)
+{
+	global $langs;
+
+	$htmlPrefix = $fieldPrefix !== '' ? $fieldPrefix.'_' : '';
+	$formId = $htmlPrefix.'limitform';
+	$targetType = $editObject->fk_user ? 'user' : ($editObject->fk_usergroup ? 'group' : 'user');
+
+	print '<div id="'.dol_escape_htmltag($modalId).'" class="lmdbsupplierorderlimit-modal" title="'.dol_escape_htmltag($title).'" style="display:none;">';
+	print '<form id="'.dol_escape_htmltag($formId).'" method="POST" action="'.$_SERVER['PHP_SELF'].'">';
+	print '<input type="hidden" name="token" value="'.dol_escape_htmltag($token).'">';
+	print '<input type="hidden" name="field_prefix" value="'.dol_escape_htmltag($fieldPrefix).'">';
+	print '<input type="hidden" name="action" value="'.($editObject->id ? 'update' : 'create').'">';
+	print '<input type="hidden" name="id" value="'.(int) $editObject->id.'">';
+	print '<table class="noborder centpercent">';
+	print '<tr><td class="titlefieldcreate">'.$langs->trans('LmdbSupplierOrderLimitTargetType').'</td><td>';
+	print '<select name="'.dol_escape_htmltag($htmlPrefix.'target_type').'" id="'.dol_escape_htmltag($htmlPrefix.'target_type').'" class="flat minwidth200">';
+	print '<option value="user"'.($targetType === 'user' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitUser').'</option>';
+	print '<option value="group"'.($targetType === 'group' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</option>';
+	print '</select>'.ajax_combobox($htmlPrefix.'target_type');
+	print '</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUser').'</td><td>'.$form->select_dolusers($editObject->fk_user, $htmlPrefix.'fk_user', 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</td><td>'.$form->select_dolgroups($editObject->fk_usergroup, $htmlPrefix.'fk_usergroup', 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitAmountHt').'</td><td><input class="flat right" type="text" name="'.dol_escape_htmltag($htmlPrefix.'amount_ht').'" value="'.dol_escape_htmltag((string) $editObject->amount_ht).'"></td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUnlimited').'</td><td>'.$form->selectyesno($htmlPrefix.'unlimited', (int) $editObject->unlimited, 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitActive').'</td><td>'.$form->selectyesno($htmlPrefix.'active', (int) $editObject->active, 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitDateStart').'</td><td>'.$form->selectDate($editObject->date_start, $htmlPrefix.'date_start', 0, 0, 1, $formId, 1, 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitDateEnd').'</td><td>'.$form->selectDate($editObject->date_end, $htmlPrefix.'date_end', 0, 0, 1, $formId, 1, 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitNotePrivate').'</td><td><textarea class="flat centpercent" name="'.dol_escape_htmltag($htmlPrefix.'note_private').'" rows="3">'.dol_escape_htmltag((string) $editObject->note_private).'</textarea></td></tr>';
+	print '<tr><td></td><td>';
+	print '<input type="submit" class="button button-save" value="'.$langs->trans('Save').'">';
+	print ' <button type="button" class="button button-cancel lmdbsupplierorderlimit-modal-close">'.$langs->trans('Cancel').'</button>';
+	print '</td></tr>';
+	print '</table>';
+	print '</form>';
+	print '</div>';
+}
+
+/**
+ * Print dialog behavior for limit forms.
+ *
+ * @param string $modalToOpen Modal id to open after page load
+ * @return void
+ */
+function lmdbsupplierorderlimitPrintLimitModalScript($modalToOpen)
+{
+	print '<script>';
+	print 'jQuery(function($) {';
+	print 'function openLimitDialog(selector) {';
+	print 'var $dialog = $(selector);';
+	print 'if (!$dialog.length) { return; }';
+	print 'if (typeof $dialog.dialog === "function") {';
+	print 'var dialogWidth = Math.min(Math.max($(window).width() - 40, 320), 900);';
+	print 'var dialogHeight = Math.max($(window).height() - 40, 300);';
+	print '$dialog.dialog({ modal: true, width: dialogWidth, maxHeight: dialogHeight, resizable: true, draggable: true });';
+	print '} else {';
+	print '$dialog.show();';
+	print '}';
+	print '}';
+	print '$(document).on("click", ".lmdbsupplierorderlimit-open-modal", function(event) {';
+	print 'event.preventDefault();';
+	print 'openLimitDialog($(this).attr("data-target"));';
+	print '});';
+	print '$(document).on("click", ".lmdbsupplierorderlimit-modal-close", function() {';
+	print 'var $dialog = $(this).closest(".lmdbsupplierorderlimit-modal");';
+	print 'if (typeof $dialog.dialog === "function" && $dialog.hasClass("ui-dialog-content")) { $dialog.dialog("close"); } else { $dialog.hide(); }';
+	print '});';
+	if ($modalToOpen !== '') {
+		print 'openLimitDialog("#'.dol_escape_js($modalToOpen).'");';
+	}
+	print '});';
+	print '</script>';
 }
 
 /**

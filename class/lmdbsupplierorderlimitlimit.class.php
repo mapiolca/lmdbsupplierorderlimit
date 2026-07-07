@@ -384,9 +384,11 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	 * @param int                  $limit   Limit
 	 * @param int                  $offset  Offset
 	 * @param array<string, mixed> $filters Filters
+	 * @param string               $sortfield Sort field
+	 * @param string               $sortorder Sort order
 	 * @return array<int, LmdbSupplierOrderLimitLimit>|int
 	 */
-	public function fetchAll($limit = 100, $offset = 0, $filters = array())
+	public function fetchAll($limit = 100, $offset = 0, $filters = array(), $sortfield = '', $sortorder = '')
 	{
 		global $conf;
 
@@ -400,7 +402,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'usergroup AS ug ON ug.rowid = t.fk_usergroup';
 		$sql .= ' WHERE t.entity = '.((int) $conf->entity);
 		$sql .= $this->buildWhereFromFilters($filters);
-		$sql .= ' ORDER BY t.active DESC, t.fk_user IS NULL, t.fk_user, t.fk_usergroup';
+		$sql .= $this->buildOrderBy($sortfield, $sortorder);
 		$sql .= $this->db->plimit((int) $limit, (int) $offset);
 
 		$resql = $this->db->query($sql);
@@ -416,6 +418,55 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		}
 
 		return $records;
+	}
+
+	/**
+	 * Build safe list ORDER BY clause.
+	 *
+	 * @param string $sortfield Sort field
+	 * @param string $sortorder Sort order
+	 * @return string
+	 */
+	private function buildOrderBy($sortfield, $sortorder)
+	{
+		$allowedSortFields = array(
+			't.rowid' => 't.rowid',
+			'u.lastname' => 'u.lastname',
+			'u.firstname' => 'u.firstname',
+			'u.login' => 'u.login',
+			'ug.nom' => 'ug.nom',
+			't.amount_ht' => 't.amount_ht',
+			't.unlimited' => 't.unlimited',
+			't.active' => 't.active',
+			't.date_start' => 't.date_start',
+			't.date_end' => 't.date_end',
+			't.date_creation' => 't.date_creation',
+		);
+
+		$orderBy = array();
+		$sortFields = array_map('trim', explode(',', $sortfield));
+		$sortOrders = array_map('trim', explode(',', strtoupper($sortorder)));
+
+		foreach ($sortFields as $key => $field) {
+			if (!isset($allowedSortFields[$field])) {
+				continue;
+			}
+
+			$order = isset($sortOrders[$key]) ? $sortOrders[$key] : (isset($sortOrders[0]) ? $sortOrders[0] : 'ASC');
+			$order = $order === 'DESC' ? 'DESC' : 'ASC';
+			$orderBy[] = $allowedSortFields[$field].' '.$order;
+		}
+
+		if (empty($orderBy)) {
+			$orderBy[] = 't.active DESC';
+			$orderBy[] = 't.fk_user IS NULL ASC';
+			$orderBy[] = 't.fk_user ASC';
+			$orderBy[] = 't.fk_usergroup ASC';
+		}
+
+		$orderBy[] = 't.rowid DESC';
+
+		return ' ORDER BY '.implode(', ', $orderBy);
 	}
 
 	/**
