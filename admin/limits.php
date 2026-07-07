@@ -260,7 +260,13 @@ print '<td class="liste_titre">'.$form->select_dolusers($searchUser, 'search_use
 print '<td class="liste_titre">'.$form->select_dolgroups($searchGroup, 'search_group', 1).'</td>';
 print '<td class="liste_titre"></td>';
 print '<td class="liste_titre"></td>';
-print '<td class="liste_titre center">'.$form->selectyesno('search_active', $searchActive, 1, false, 1).'</td>';
+print '<td class="liste_titre center">';
+print '<select class="flat maxwidth100" name="search_active" id="search_active">';
+print '<option value=""'.($searchActive === '' ? ' selected' : '').'></option>';
+print '<option value="1"'.($searchActive !== '' && (int) $searchActive === 1 ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitActive').'</option>';
+print '<option value="0"'.($searchActive !== '' && (int) $searchActive === 0 ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitInactive').'</option>';
+print '</select>'.ajax_combobox('search_active');
+print '</td>';
 print '<td class="liste_titre"></td>';
 print '<td class="liste_titre center maxwidthsearch">'.$form->showFilterButtons().'</td>';
 print '</tr>';
