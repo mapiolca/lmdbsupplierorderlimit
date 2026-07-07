@@ -137,12 +137,13 @@ print load_fiche_titre($langs->trans('LmdbSupplierOrderLimitLogs'), $linkback, '
 $head = lmdbsupplierorderlimitAdminPrepareHead();
 print dol_get_fiche_head($head, 'logs', $langs->trans('LmdbSupplierOrderLimit'), -1, 'supplier_order');
 
-print_barre_liste($langs->trans('LmdbSupplierOrderLimitLogs'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $totalnboflines, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
-
 print '<form id="logfilter" method="GET" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="sortfield" value="'.dol_escape_htmltag($sortfield).'">';
 print '<input type="hidden" name="sortorder" value="'.dol_escape_htmltag($sortorder).'">';
-print '<input type="hidden" name="limit" value="'.((int) $limit).'">';
+print '<input type="hidden" name="page" value="0">';
+
+print_barre_liste($langs->trans('LmdbSupplierOrderLimitLogs'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $totalnboflines, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
+
 print '<table class="liste centpercent">';
 print '<tr class="liste_titre_filter">';
 print '<td class="liste_titre">'.$form->select_dolusers($searchUser, 'search_user', 1).'</td>';
@@ -187,6 +188,7 @@ foreach ($records as $record) {
 
 print '</table>';
 print '</form>';
+lmdbsupplierorderlimitPrintListLimitAutoSubmitScript('logfilter');
 
 print dol_get_fiche_end();
 

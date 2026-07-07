@@ -61,6 +61,27 @@ function lmdbsupplierorderlimitBackToModuleListLink()
 }
 
 /**
+ * Submit a native Dolibarr list form when the page-size selector changes.
+ *
+ * @param string $formId HTML form id
+ * @return void
+ */
+function lmdbsupplierorderlimitPrintListLimitAutoSubmitScript($formId)
+{
+	print '<script>';
+	print 'jQuery(function($) {';
+	print 'var $form = $("#'.dol_escape_js($formId).'");';
+	print 'if (!$form.length) { return; }';
+	print '$form.find("select.selectlimit, select[name=limit]").off("change.lmdbsupplierorderlimitLimit").on("change.lmdbsupplierorderlimitLimit", function() {';
+	print 'var $page = $form.find("input[name=page]");';
+	print 'if ($page.length) { $page.val("0"); }';
+	print '$form.trigger("submit");';
+	print '});';
+	print '});';
+	print '</script>';
+}
+
+/**
  * Centralized compatibility feature list.
  *
  * @return array<string, array<string, mixed>>
