@@ -1,0 +1,2 @@
+-- Indexes and unique keys are declared in llx_lmdbsupplierorderlimit_limit.sql
+-- to keep activation and reactivation idempotent with CREATE TABLE IF NOT EXISTS.

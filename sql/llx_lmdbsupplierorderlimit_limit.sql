@@ -1,0 +1,25 @@
+CREATE TABLE IF NOT EXISTS llx_lmdbsupplierorderlimit_limit
+(
+	rowid integer AUTO_INCREMENT PRIMARY KEY,
+	entity integer DEFAULT 1 NOT NULL,
+	fk_user integer NULL,
+	fk_usergroup integer NULL,
+	amount_ht decimal(24,8) NULL,
+	unlimited tinyint DEFAULT 0 NOT NULL,
+	active tinyint DEFAULT 1 NOT NULL,
+	date_start datetime NULL,
+	date_end datetime NULL,
+	note_private text NULL,
+	date_creation datetime NOT NULL,
+	tms timestamp DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+	fk_user_creat integer NOT NULL,
+	fk_user_modif integer NULL,
+	import_key varchar(14) NULL,
+	INDEX idx_lmdbsupplierorderlimit_limit_entity (entity),
+	INDEX idx_lmdbsupplierorderlimit_limit_fk_user (fk_user),
+	INDEX idx_lmdbsupplierorderlimit_limit_fk_usergroup (fk_usergroup),
+	INDEX idx_lmdbsupplierorderlimit_limit_active (active),
+	INDEX idx_lmdbsupplierorderlimit_limit_dates (date_start, date_end),
+	UNIQUE KEY uk_lmdbsupplierorderlimit_limit_user_entity (entity, fk_user),
+	UNIQUE KEY uk_lmdbsupplierorderlimit_limit_group_entity (entity, fk_usergroup)
+) ENGINE=innodb;

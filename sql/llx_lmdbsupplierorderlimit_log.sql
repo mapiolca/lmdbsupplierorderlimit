@@ -1,0 +1,25 @@
+CREATE TABLE IF NOT EXISTS llx_lmdbsupplierorderlimit_log
+(
+	rowid integer AUTO_INCREMENT PRIMARY KEY,
+	entity integer DEFAULT 1 NOT NULL,
+	event_type varchar(64) NOT NULL,
+	decision tinyint DEFAULT 0 NOT NULL,
+	fk_supplier_order integer NULL,
+	fk_user_action integer NOT NULL,
+	order_total_ht decimal(24,8) NULL,
+	limit_amount_ht decimal(24,8) NULL,
+	limit_unlimited tinyint DEFAULT 0 NOT NULL,
+	limit_source varchar(32) NULL,
+	fk_limit integer NULL,
+	reason_code varchar(64) NOT NULL,
+	origin varchar(64) NULL,
+	message text NULL,
+	date_creation datetime NOT NULL,
+	ip varchar(64) NULL,
+	user_agent varchar(255) NULL,
+	INDEX idx_lmdbsupplierorderlimit_log_entity (entity),
+	INDEX idx_lmdbsupplierorderlimit_log_fk_supplier_order (fk_supplier_order),
+	INDEX idx_lmdbsupplierorderlimit_log_fk_user_action (fk_user_action),
+	INDEX idx_lmdbsupplierorderlimit_log_reason_code (reason_code),
+	INDEX idx_lmdbsupplierorderlimit_log_event_type (event_type)
+) ENGINE=innodb;

@@ -1,0 +1,2 @@
+-- No c_action_trigger entry or native notification event is declared for v1.
+-- The module listens to the existing ORDER_SUPPLIER_APPROVE trigger.
