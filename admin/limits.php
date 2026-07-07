@@ -7,6 +7,10 @@
  * (at your option) any later version.
  */
 
+if (!defined('CSRFCHECK_WITH_TOKEN')) {
+	define('CSRFCHECK_WITH_TOKEN', '1');
+}
+
 require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
 dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
@@ -38,9 +42,7 @@ if (!$permissiontoread) {
 }
 
 $sensitiveActions = array('create', 'update', 'disable', 'delete');
-if (in_array($action, $sensitiveActions, true) && !checkToken()) {
-	accessforbidden('Invalid token');
-}
+// CSRF is enforced natively by main.inc.php because CSRFCHECK_WITH_TOKEN is defined above.
 
 $form = new Form($db);
 $token = newToken();
@@ -218,7 +220,7 @@ foreach ($records as $record) {
 	print '<td>'.(!empty($record->date_start) ? dol_print_date((int) $record->date_start, 'day') : '').' - '.(!empty($record->date_end) ? dol_print_date((int) $record->date_end, 'day') : '').'</td>';
 	print '<td class="right">';
 	if ($permissiontowrite) {
-		print '<a class="editfielda" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.$param.'">'.img_edit().'</a> ';
+		print '<a class="editfielda" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.'&token='.$token.$param.'">'.img_edit().'</a> ';
 	}
 	if ($permissiontodelete && !empty($record->active)) {
 		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.'">'.img_picto($langs->trans('Disable'), 'disable').'</a>';

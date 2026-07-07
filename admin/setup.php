@@ -7,6 +7,10 @@
  * (at your option) any later version.
  */
 
+if (!defined('CSRFCHECK_WITH_TOKEN')) {
+	define('CSRFCHECK_WITH_TOKEN', '1');
+}
+
 require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
 dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
@@ -24,10 +28,6 @@ if (!lmdbsupplierorderlimitUserCan($user, 'config', 'write')) {
 }
 
 if ($action === 'save') {
-	if (!checkToken()) {
-		accessforbidden('Invalid token');
-	}
-
 	$defaultNoLimitBehavior = GETPOST('default_no_limit_behavior', 'alpha');
 	if ($defaultNoLimitBehavior !== 'deny') {
 		$defaultNoLimitBehavior = 'deny';
