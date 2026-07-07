@@ -50,14 +50,18 @@ class LmdbSupplierOrderLimitAuthorizer
 			return self::buildDecision(false, 'object_not_supplier_order', null, null, 0, null, null, $approvalLevel);
 		}
 
-		$nativeRight = $approvalLevel === 2 ? 'approve2' : 'approuver';
-		if (!is_object($user) || !$user->hasRight('fournisseur', 'commande', $nativeRight)) {
-			return self::buildDecision(false, 'native_permission_missing', self::extractOrderAmount($order), null, 0, null, null, $approvalLevel);
-		}
-
 		$orderAmount = self::extractOrderAmount($order);
 		if ($orderAmount === null) {
 			return self::buildDecision(false, 'invalid_amount', null, null, 0, null, null, $approvalLevel);
+		}
+
+		if (lmdbsupplierorderlimitUserIsAdministrator($user)) {
+			return self::buildDecision(true, 'admin_unlimited', $orderAmount, null, 1, 'admin', null, $approvalLevel);
+		}
+
+		$nativeRight = $approvalLevel === 2 ? 'approve2' : 'approuver';
+		if (!is_object($user) || !$user->hasRight('fournisseur', 'commande', $nativeRight)) {
+			return self::buildDecision(false, 'native_permission_missing', $orderAmount, null, 0, null, null, $approvalLevel);
 		}
 
 		$entity = isset($order->entity) && (int) $order->entity > 0 ? (int) $order->entity : (int) $conf->entity;
@@ -323,8 +327,8 @@ class LmdbSupplierOrderLimitAuthorizer
 		$reason = isset($decision['reason']) ? (string) $decision['reason'] : 'technical_error';
 
 		if ($reason === 'amount_over_limit') {
-			$orderAmount = isset($decision['order_amount_ht']) && $decision['order_amount_ht'] !== null ? (string) $decision['order_amount_ht'] : '';
-			$limitAmount = isset($decision['limit_amount_ht']) && $decision['limit_amount_ht'] !== null ? (string) $decision['limit_amount_ht'] : '';
+			$orderAmount = isset($decision['order_amount_ht']) && $decision['order_amount_ht'] !== null ? self::formatTotalAmountForDisplay((string) $decision['order_amount_ht']) : '';
+			$limitAmount = isset($decision['limit_amount_ht']) && $decision['limit_amount_ht'] !== null ? self::formatTotalAmountForDisplay((string) $decision['limit_amount_ht']) : '';
 			return $langs->trans('LmdbSupplierOrderLimitAmountOverLimit').' '.$langs->trans('LmdbSupplierOrderLimitOrderAmount').': '.$orderAmount.' / '.$langs->trans('LmdbSupplierOrderLimitApplicableLimit').': '.$limitAmount;
 		}
 
@@ -345,6 +349,24 @@ class LmdbSupplierOrderLimitAuthorizer
 		}
 
 		return $langs->trans('LmdbSupplierOrderLimitApprovalDenied');
+	}
+
+	/**
+	 * Format an amount with Dolibarr total rounding settings.
+	 *
+	 * @param string $amount Normalized amount
+	 * @return string
+	 */
+	public static function formatTotalAmountForDisplay($amount)
+	{
+		$rounded = function_exists('price2num') ? price2num($amount, 'MT') : $amount;
+
+		if (function_exists('price')) {
+			return price((float) $rounded);
+		}
+
+		$decimals = function_exists('getDolGlobalInt') ? getDolGlobalInt('MAIN_MAX_DECIMALS_TOT', 2) : 2;
+		return number_format((float) $rounded, $decimals, '.', ' ');
 	}
 
 	/**

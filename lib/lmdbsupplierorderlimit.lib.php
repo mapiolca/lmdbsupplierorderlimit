@@ -118,11 +118,43 @@ function lmdbsupplierorderlimitUserCan($user, $object, $action)
 		return false;
 	}
 
-	if (!empty($user->admin)) {
+	if (lmdbsupplierorderlimitUserIsAdministrator($user)) {
 		return true;
 	}
 
 	return $user->hasRight('lmdbsupplierorderlimit', $object, $action);
+}
+
+/**
+ * Check if user must receive full module functional rights.
+ *
+ * Covers Dolibarr administrators, global/super administrators and common
+ * Multicompany administrator rights without requiring module granular rights.
+ *
+ * @param User $user User object
+ * @return bool
+ */
+function lmdbsupplierorderlimitUserIsAdministrator($user)
+{
+	if (!is_object($user)) {
+		return false;
+	}
+
+	if (!empty($user->admin) || !empty($user->superadmin)) {
+		return true;
+	}
+
+	if (isset($user->entity) && (int) $user->entity === 0 && !empty($user->admin)) {
+		return true;
+	}
+
+	if (method_exists($user, 'hasRight')) {
+		if ($user->hasRight('multicompany', 'admin', 'write') || $user->hasRight('multicompany', 'admin', 'read')) {
+			return true;
+		}
+	}
+
+	return false;
 }
 
 /**

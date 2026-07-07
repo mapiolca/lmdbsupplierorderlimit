@@ -9,3 +9,5 @@
 - Ajout du garde-fou trigger `ORDER_SUPPLIER_APPROVE`.
 - Ajout des pages d’administration, traductions `fr_FR` et `en_US`.
 - Correction de la compatibilité CSRF avec les versions Dolibarr où `checkToken()` n’existe pas.
+- Formatage des montants de refus avec le réglage Dolibarr d’arrondi des totaux.
+- Accès complet pour super-administrateur, administrateur et administrateur Multicompany.
