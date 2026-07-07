@@ -78,6 +78,16 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	/** @var string|null */
 	public $user_firstname;
 	/** @var string|null */
+	public $user_photo;
+	/** @var int|null */
+	public $user_status;
+	/** @var string|null */
+	public $user_email;
+	/** @var int|null */
+	public $user_admin;
+	/** @var int|null */
+	public $user_entity;
+	/** @var string|null */
 	public $group_name;
 
 	/**
@@ -383,7 +393,8 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$records = array();
 		$sql = 'SELECT t.rowid, t.entity, t.fk_user, t.fk_usergroup, t.amount_ht, t.unlimited, t.active,';
 		$sql .= ' t.date_start, t.date_end, t.note_private, t.date_creation, t.tms, t.fk_user_creat, t.fk_user_modif, t.import_key,';
-		$sql .= ' u.login AS user_login, u.lastname AS user_lastname, u.firstname AS user_firstname, ug.nom AS group_name';
+		$sql .= ' u.login AS user_login, u.lastname AS user_lastname, u.firstname AS user_firstname, u.photo AS user_photo,';
+		$sql .= ' u.statut AS user_status, u.email AS user_email, u.admin AS user_admin, u.entity AS user_entity, ug.nom AS group_name';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
 		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'user AS u ON u.rowid = t.fk_user';
 		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'usergroup AS ug ON ug.rowid = t.fk_usergroup';
@@ -505,6 +516,11 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$this->user_login = isset($obj->user_login) && $obj->user_login !== null ? (string) $obj->user_login : null;
 		$this->user_lastname = isset($obj->user_lastname) && $obj->user_lastname !== null ? (string) $obj->user_lastname : null;
 		$this->user_firstname = isset($obj->user_firstname) && $obj->user_firstname !== null ? (string) $obj->user_firstname : null;
+		$this->user_photo = isset($obj->user_photo) && $obj->user_photo !== null ? (string) $obj->user_photo : null;
+		$this->user_status = isset($obj->user_status) && $obj->user_status !== null ? (int) $obj->user_status : null;
+		$this->user_email = isset($obj->user_email) && $obj->user_email !== null ? (string) $obj->user_email : null;
+		$this->user_admin = isset($obj->user_admin) && $obj->user_admin !== null ? (int) $obj->user_admin : null;
+		$this->user_entity = isset($obj->user_entity) && $obj->user_entity !== null ? (int) $obj->user_entity : null;
 		$this->group_name = isset($obj->group_name) && $obj->group_name !== null ? (string) $obj->group_name : null;
 	}
 

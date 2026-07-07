@@ -64,10 +64,19 @@ class LmdbSupplierOrderLimitAuthorizer
 			return self::buildDecision(false, 'native_permission_missing', $orderAmount, null, 0, null, null, $approvalLevel);
 		}
 
+		if ($approvalLevel === 1 && $user->hasRight('fournisseur', 'commande', 'approve2')) {
+			return self::buildDecision(true, 'first_level_allowed_by_second_level_permission', $orderAmount, null, 0, 'second_level_permission', null, $approvalLevel);
+		}
+
 		$entity = isset($order->entity) && (int) $order->entity > 0 ? (int) $order->entity : (int) $conf->entity;
 		$limit = self::resolveApplicableLimit($db, $user, $entity);
 		if (empty($limit['fk_limit']) && empty($limit['unlimited']) && $limit['source'] === null) {
-			return self::buildDecision(false, 'no_limit_found', $orderAmount, null, 0, null, null, $approvalLevel);
+			$defaultNoLimitBehavior = getDolGlobalString('LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR', 'unlimited');
+			if ($defaultNoLimitBehavior === 'deny') {
+				return self::buildDecision(false, 'no_limit_found', $orderAmount, null, 0, null, null, $approvalLevel);
+			}
+
+			return self::buildDecision(true, 'no_limit_unlimited', $orderAmount, null, 1, 'default', null, $approvalLevel);
 		}
 
 		if (!empty($limit['unlimited'])) {

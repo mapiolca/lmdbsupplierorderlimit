@@ -154,7 +154,7 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 			'LMDBSUPPLIERORDERLIMIT_LOG_ALLOWED_APPROVALS' => array('value' => '0', 'type' => 'yesno'),
 			'LMDBSUPPLIERORDERLIMIT_LOG_DENIED_APPROVALS' => array('value' => '1', 'type' => 'yesno'),
 			'LMDBSUPPLIERORDERLIMIT_DIRECT_USER_PRIORITY' => array('value' => '1', 'type' => 'yesno'),
-			'LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR' => array('value' => 'deny', 'type' => 'chaine'),
+			'LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR' => array('value' => 'unlimited', 'type' => 'chaine'),
 		);
 
 		foreach ($defaults as $constant => $definition) {

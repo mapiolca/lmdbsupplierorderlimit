@@ -13,6 +13,8 @@ if (!defined('CSRFCHECK_WITH_TOKEN')) {
 
 require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
+require_once DOL_DOCUMENT_ROOT.'/user/class/user.class.php';
+require_once DOL_DOCUMENT_ROOT.'/user/class/usergroup.class.php';
 dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
 dol_include_once('/lmdbsupplierorderlimit/class/lmdbsupplierorderlimitlimit.class.php');
 dol_include_once('/lmdbsupplierorderlimit/class/lmdbsupplierorderlimitlog.class.php');
@@ -115,7 +117,7 @@ if ($action === 'disable' && $permissiontodelete) {
 	exit;
 }
 
-if ($action === 'delete' && $permissiontodelete) {
+if ($action === 'confirm_delete' && GETPOST('confirm', 'alpha') === 'yes' && $permissiontodelete) {
 	$object = new LmdbSupplierOrderLimitLimit($db);
 	$result = $object->fetch($id);
 	if ($result > 0) {
@@ -183,6 +185,18 @@ print dol_get_fiche_head($head, 'limits', $langs->trans('LmdbSupplierOrderLimit'
 
 print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, '', '', '', $num, $num, 'object_lmdbsupplierorderlimit', 0, '', '', $limit);
 
+if ($action === 'delete' && $permissiontodelete && $id > 0) {
+	print $form->formconfirm(
+		$_SERVER['PHP_SELF'].'?id='.(int) $id.$param,
+		$langs->trans('Delete'),
+		$langs->trans('ConfirmDeleteObject'),
+		'confirm_delete',
+		'',
+		0,
+		1
+	);
+}
+
 print '<form method="GET" action="'.$_SERVER['PHP_SELF'].'">';
 print '<table class="liste centpercent">';
 print '<tr class="liste_titre_filter">';
@@ -209,11 +223,9 @@ if (count($records) === 0) {
 }
 
 foreach ($records as $record) {
-	$userLabel = trim((string) $record->user_firstname.' '.(string) $record->user_lastname);
-	$userLabel = $userLabel !== '' ? $userLabel : (string) $record->user_login;
 	print '<tr class="oddeven">';
-	print '<td>'.($record->fk_user ? dol_escape_htmltag($userLabel).' <span class="opacitymedium">#'.((int) $record->fk_user).'</span>' : '').'</td>';
-	print '<td>'.($record->fk_usergroup ? dol_escape_htmltag((string) $record->group_name).' <span class="opacitymedium">#'.((int) $record->fk_usergroup).'</span>' : '').'</td>';
+	print '<td>'.lmdbsupplierorderlimitRenderUserLink($db, $record).'</td>';
+	print '<td>'.lmdbsupplierorderlimitRenderUserGroupLink($db, $record).'</td>';
 	print '<td class="right">'.($record->amount_ht !== null ? price((float) $record->amount_ht) : '').'</td>';
 	print '<td class="center">'.($record->unlimited ? $langs->trans('Yes') : $langs->trans('No')).'</td>';
 	print '<td class="center">'.$record->getLibStatut(1).'</td>';
@@ -223,7 +235,10 @@ foreach ($records as $record) {
 		print '<a class="editfielda" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.'&token='.$token.$param.'">'.img_edit().'</a> ';
 	}
 	if ($permissiontodelete && !empty($record->active)) {
-		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.'">'.img_picto($langs->trans('Disable'), 'disable').'</a>';
+		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.$param.'">'.img_picto($langs->trans('Disable'), 'disable').'</a> ';
+	}
+	if ($permissiontodelete) {
+		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=delete&id='.(int) $record->id.'&token='.$token.$param.'">'.img_delete().'</a>';
 	}
 	print '</td>';
 	print '</tr>';
@@ -287,4 +302,63 @@ function lmdbsupplierorderlimitAdminGetPostedDate($prefix)
 	}
 
 	return dol_mktime(0, 0, 0, $month, $day, $year);
+}
+
+/**
+ * Render the linked user with the native user photo.
+ *
+ * @param DoliDB                      $db     Database handler
+ * @param LmdbSupplierOrderLimitLimit $record Limit record
+ * @return string
+ */
+function lmdbsupplierorderlimitRenderUserLink($db, $record)
+{
+	if (empty($record->fk_user)) {
+		return '';
+	}
+
+	if ($record->user_login === null && $record->user_lastname === null && $record->user_firstname === null) {
+		return '<span class="opacitymedium">#'.((int) $record->fk_user).'</span>';
+	}
+
+	$userstatic = new User($db);
+	$userstatic->id = (int) $record->fk_user;
+	$userstatic->rowid = (int) $record->fk_user;
+	$userstatic->login = (string) $record->user_login;
+	$userstatic->lastname = (string) $record->user_lastname;
+	$userstatic->firstname = (string) $record->user_firstname;
+	$userstatic->photo = (string) $record->user_photo;
+	$userstatic->status = $record->user_status !== null ? (int) $record->user_status : 1;
+	$userstatic->statut = $userstatic->status;
+	$userstatic->email = (string) $record->user_email;
+	$userstatic->admin = (int) $record->user_admin;
+	$userstatic->entity = $record->user_entity !== null ? (int) $record->user_entity : 0;
+
+	return $userstatic->getNomUrl(-1);
+}
+
+/**
+ * Render the linked user group with the native group URL.
+ *
+ * @param DoliDB                      $db     Database handler
+ * @param LmdbSupplierOrderLimitLimit $record Limit record
+ * @return string
+ */
+function lmdbsupplierorderlimitRenderUserGroupLink($db, $record)
+{
+	if (empty($record->fk_usergroup)) {
+		return '';
+	}
+
+	if ($record->group_name === null || $record->group_name === '') {
+		return '<span class="opacitymedium">#'.((int) $record->fk_usergroup).'</span>';
+	}
+
+	$groupstatic = new UserGroup($db);
+	$groupstatic->id = (int) $record->fk_usergroup;
+	$groupstatic->rowid = (int) $record->fk_usergroup;
+	$groupstatic->name = (string) $record->group_name;
+	$groupstatic->ref = (string) $record->group_name;
+
+	return $groupstatic->getNomUrl(1);
 }

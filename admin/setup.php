@@ -29,8 +29,8 @@ if (!lmdbsupplierorderlimitUserCan($user, 'config', 'write')) {
 
 if ($action === 'save') {
 	$defaultNoLimitBehavior = GETPOST('default_no_limit_behavior', 'alpha');
-	if ($defaultNoLimitBehavior !== 'deny') {
-		$defaultNoLimitBehavior = 'deny';
+	if (!in_array($defaultNoLimitBehavior, array('deny', 'unlimited'), true)) {
+		$defaultNoLimitBehavior = 'unlimited';
 	}
 
 	$result = dolibarr_set_const($db, 'LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR', $defaultNoLimitBehavior, 'chaine', 0, '', (int) $conf->entity);
@@ -79,11 +79,16 @@ foreach ($switchConstants as $constant => $labelKey) {
 print '<tr class="oddeven">';
 print '<td>'.$langs->trans('LmdbSupplierOrderLimitDefaultNoLimitBehavior').'</td>';
 print '<td>';
+$defaultNoLimitBehavior = getDolGlobalString('LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR', 'unlimited');
+if (!in_array($defaultNoLimitBehavior, array('deny', 'unlimited'), true)) {
+	$defaultNoLimitBehavior = 'unlimited';
+}
 print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'">';
 print '<input type="hidden" name="token" value="'.$token.'">';
 print '<input type="hidden" name="action" value="save">';
 print '<select class="flat minwidth200" name="default_no_limit_behavior" id="default_no_limit_behavior">';
-print '<option value="deny" selected>'.$langs->trans('LmdbSupplierOrderLimitDefaultDeny').'</option>';
+print '<option value="unlimited"'.($defaultNoLimitBehavior === 'unlimited' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitDefaultUnlimited').'</option>';
+print '<option value="deny"'.($defaultNoLimitBehavior === 'deny' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitDefaultDeny').'</option>';
 print '</select> ';
 print '<input type="submit" class="button button-save" value="'.$langs->trans('Save').'">';
 print '</form>';

@@ -12,3 +12,7 @@
 - Formatage des montants de refus avec le réglage Dolibarr d’arrondi des totaux.
 - Accès complet pour super-administrateur, administrateur et administrateur Multicompany.
 - Alignement du libellé du bouton d’approbation refusé sur les clés natives des commandes fournisseurs.
+- Amélioration des traductions françaises et ajout des traductions allemandes, espagnoles et italiennes.
+- Affichage natif des utilisateurs et groupes dans la liste des plafonds, avec photo utilisateur, et ajout de la suppression de ligne.
+- Ajout du comportement sans plafond `Illimité`, utilisé par défaut lorsque aucun plafond utilisateur ou groupe n’est défini.
+- Ajustement du contrôle des plafonds pour distinguer l’approbation premier niveau de l’approbation second niveau.

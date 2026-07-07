@@ -128,14 +128,17 @@ class ActionsLmdbSupplierOrderLimit
 			return 0;
 		}
 
-		$approvalLevel = $user->hasRight('fournisseur', 'commande', 'approve2') ? 2 : 1;
-		$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, $approvalLevel);
+		if ($user->hasRight('fournisseur', 'commande', 'approve2')) {
+			return 0;
+		}
+
+		$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 1);
 		if (!empty($decision['allowed']) || (isset($decision['reason']) && $decision['reason'] === 'native_permission_missing')) {
 			return 0;
 		}
 
 		$message = $this->getDeniedMessage($decision);
-		print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($message).'">'.$this->getNativeApprovalButtonLabel($approvalLevel).'</a>';
+		print '<a class="butActionRefused classfortooltip" href="#" title="'.dol_escape_htmltag($message).'">'.$this->getNativeApprovalButtonLabel(1).'</a>';
 
 		return 1;
 	}
