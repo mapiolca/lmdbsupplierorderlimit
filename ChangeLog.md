@@ -1,5 +1,9 @@
 # ChangeLog
 
+## 1.0.1 - 2026-08-25
+
+- Suppression de l'initialisation dynamique obsolète de la propriété de menus sous PHP 8.2.
+
 ## 1.0.0 - 2026-07-07
 
 - Création du module externe `lmdbsupplierorderlimit`.

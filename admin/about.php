@@ -31,7 +31,7 @@ print dol_get_fiche_head($head, 'about', $langs->trans('LmdbSupplierOrderLimit')
 print '<table class="noborder centpercent">';
 print '<tr class="liste_titre"><td class="titlefield">'.$langs->trans('Parameter').'</td><td>'.$langs->trans('Value').'</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('Module').'</td><td>'.$langs->trans('LmdbSupplierOrderLimit').'</td></tr>';
-print '<tr class="oddeven"><td>'.$langs->trans('Version').'</td><td>1.0.0</td></tr>';
+print '<tr class="oddeven"><td>'.$langs->trans('Version').'</td><td>1.0.1</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitAboutPublisher').'</td><td>Pierre Ardoin &lt;developpeur@lesmetiersdubatiment.fr&gt;</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('Description').'</td><td>'.$langs->trans('LmdbSupplierOrderLimitDescription').'</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('Compatibility').'</td><td>Dolibarr 20+ / PHP 8.0+</td></tr>';
