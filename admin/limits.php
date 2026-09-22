@@ -28,6 +28,9 @@ $limit = GETPOSTINT('limit') > 0 ? GETPOSTINT('limit') : getDolGlobalInt('MAIN_S
 $sortfield = GETPOST('sortfield', 'aZ09comma');
 $sortorder = GETPOST('sortorder', 'aZ09comma');
 
+$searchType = GETPOST('search_type', 'aZ09');
+$searchEntities = GETPOST('search_entities', 'array:int');
+$searchEntities = is_array($searchEntities) ? array_map('intval', $searchEntities) : array();
 $searchUser = GETPOSTINT('search_user');
 $searchGroup = GETPOSTINT('search_group');
 $searchActive = GETPOST('search_active', 'int');
@@ -47,27 +50,50 @@ if (empty($page) || $page < 0 || $buttonSearch || $buttonRemoveFilter) {
 $offset = $limit * max(0, $page);
 
 if ($buttonRemoveFilter) {
+	$searchType = '';
+	$searchEntities = array();
 	$searchUser = 0;
 	$searchGroup = 0;
 	$searchActive = '';
 }
 
-if (!isModEnabled('lmdbsupplierorderlimit')) {
+if (!isModEnabled('lmdbsupplierorderlimit') || !empty($user->socid)) {
 	accessforbidden();
 }
 
-$permissiontoread = lmdbsupplierorderlimitUserCan($user, 'limit', 'read');
-$permissiontowrite = lmdbsupplierorderlimitUserCan($user, 'limit', 'write');
-$permissiontodelete = lmdbsupplierorderlimitUserCan($user, 'limit', 'delete');
+$permissiontoread = $user->hasRight('lmdbsupplierorderlimit', 'limit', 'read');
+$permissiontowrite = $user->hasRight('lmdbsupplierorderlimit', 'limit', 'write');
+$permissiontodelete = $user->hasRight('lmdbsupplierorderlimit', 'limit', 'delete');
 
 if (!$permissiontoread) {
 	accessforbidden();
 }
+if (in_array($action, array('create','update','disable','create_form','edit'), true) && !$permissiontowrite) { accessforbidden(); }
+if (in_array($action, array('delete','confirm_delete'), true) && !$permissiontodelete) { accessforbidden(); }
 
 $sensitiveActions = array('create', 'update', 'disable', 'delete');
 // CSRF is enforced natively by main.inc.php because CSRFCHECK_WITH_TOKEN is defined above.
 
+try { $entityLabels = LmdbSupplierOrderLimitScope::labels($db); } catch (Throwable $e) { accessforbidden($langs->trans('LimitTechnicalError')); }
+$typeLabels = array();
+foreach (LmdbSupplierOrderLimitPolicy::TYPES as $type => $key) { $typeLabels[$type] = $langs->trans($key); }
 $form = new Form($db);
+$contextpage = 'lmdbsupplierorderlimit_limits';
+$arrayfields = array(
+	't.limit_type' => array('label'=>'LimitType','checked'=>1),
+	't.entity' => array('label'=>'LimitEnvironment','checked'=>1,'enabled'=>!empty($entityLabels)),
+	'u.lastname' => array('label'=>'LmdbSupplierOrderLimitUser','checked'=>1),
+	'ug.nom' => array('label'=>'LmdbSupplierOrderLimitGroup','checked'=>1),
+	't.amount_ht' => array('label'=>'LmdbSupplierOrderLimitAmountHt','checked'=>1),
+	't.unlimited' => array('label'=>'LmdbSupplierOrderLimitUnlimited','checked'=>1),
+	't.active' => array('label'=>'Status','checked'=>1),
+	't.date_start' => array('label'=>'Date','checked'=>1),
+);
+require DOL_DOCUMENT_ROOT.'/core/actions_changeselectedfields.inc.php';
+$selectedfields = $form->multiSelectArrayWithCheckbox('selectedfields', $arrayfields, $contextpage);
+if (!$entityLabels) { $arrayfields['t.entity']['checked'] = 0; }
+$visibleFields = array_filter($arrayfields, static function ($field) { return !empty($field['checked']); });
+$colspan = count($visibleFields) + 1;
 $token = newToken();
 $formObjectWithErrors = null;
 $modalToOpen = '';
@@ -77,7 +103,7 @@ if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 	if ($action === 'update') {
 		$fetchResult = $object->fetch($id);
 		if ($fetchResult <= 0) {
-			setEventMessages($langs->trans('LmdbSupplierOrderLimitRuleNotFound'), null, 'errors');
+			accessforbidden($langs->trans('LmdbSupplierOrderLimitRuleNotFound'));
 		}
 	}
 
@@ -88,6 +114,7 @@ if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 	$object->rowid = $id;
 	$object->fk_user = $targetType === 'user' ? GETPOSTINT($fieldPrefix.'fk_user') : null;
 	$object->fk_usergroup = $targetType === 'group' ? GETPOSTINT($fieldPrefix.'fk_usergroup') : null;
+	$object->limit_type = GETPOST($fieldPrefix.'limit_type', 'aZ09');
 	$object->amount_ht = GETPOST($fieldPrefix.'amount_ht', 'restricthtml');
 	$object->unlimited = GETPOSTINT($fieldPrefix.'unlimited');
 	$object->active = GETPOSTINT($fieldPrefix.'active');
@@ -117,7 +144,7 @@ if (($action === 'create' || $action === 'update') && $permissiontowrite) {
 	setEventMessages($object->error, $object->errors, 'errors');
 }
 
-if ($action === 'disable' && $permissiontodelete) {
+if ($action === 'disable' && $permissiontowrite) {
 	$object = new LmdbSupplierOrderLimitLimit($db);
 	$result = $object->fetch($id);
 	if ($result > 0) {
@@ -171,7 +198,7 @@ if ($action === 'confirm_delete' && GETPOST('confirm', 'alpha') === 'yes' && $pe
 	exit;
 }
 
-$filters = array();
+$filters = array('limit_type' => $searchType, 'entities' => $searchEntities);
 if ($searchUser > 0) {
 	$filters['fk_user'] = $searchUser;
 }
@@ -202,7 +229,8 @@ if ($modalToOpen === '' && $permissiontowrite && $action === 'edit' && $id > 0) 
 	$modalToOpen = 'lmdbsupplierorderlimit-limit-modal-edit-'.((int) $id);
 }
 
-$param = '';
+$param = '&search_type='.urlencode($searchType);
+foreach ($searchEntities as $entityId) { $param .= '&search_entities[]='.(int) $entityId; }
 if ($searchUser > 0) {
 	$param .= '&search_user='.(int) $searchUser;
 }
@@ -253,68 +281,65 @@ if ($action === 'delete' && $permissiontodelete && $id > 0) {
 	);
 }
 
-print '<form id="limitfilter" method="GET" action="'.$_SERVER['PHP_SELF'].'">';
+print '<form id="limitfilter" method="POST" action="'.$_SERVER['PHP_SELF'].'">';
+print '<input type="hidden" name="token" value="'.$token.'">';
+print '<input type="hidden" name="formfilteraction" value="list">';
 print '<input type="hidden" name="sortfield" value="'.dol_escape_htmltag($sortfield).'">';
 print '<input type="hidden" name="sortorder" value="'.dol_escape_htmltag($sortorder).'">';
 print '<input type="hidden" name="page" value="0">';
 
 print_barre_liste($langs->trans('LmdbSupplierOrderLimitLimits'), $page, $_SERVER['PHP_SELF'], $param, $sortfield, $sortorder, '', $num, $totalnboflines, 'object_lmdbsupplierorderlimit', 0, $newcardbutton, '', $limit);
 
-print '<table class="liste centpercent">';
+print '<div class="div-table-responsive-no-min"><table class="liste centpercent">';
 print '<tr class="liste_titre_filter">';
-print '<td class="liste_titre">'.$form->select_dolusers($searchUser, 'search_user', 1).'</td>';
-print '<td class="liste_titre">'.$form->select_dolgroups($searchGroup, 'search_group', 1).'</td>';
-print '<td class="liste_titre"></td>';
-print '<td class="liste_titre"></td>';
-print '<td class="liste_titre center">';
-print '<select class="flat maxwidth100" name="search_active" id="search_active">';
-print '<option value=""'.($searchActive === '' ? ' selected' : '').'></option>';
-print '<option value="1"'.($searchActive !== '' && (int) $searchActive === 1 ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitActive').'</option>';
-print '<option value="0"'.($searchActive !== '' && (int) $searchActive === 0 ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitInactive').'</option>';
-print '</select>'.ajax_combobox('search_active');
-print '</td>';
-print '<td class="liste_titre"></td>';
-print '<td class="liste_titre center maxwidthsearch">'.$form->showFilterButtons().'</td>';
-print '</tr>';
-print '<tr class="liste_titre">';
-print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitUser'), $_SERVER['PHP_SELF'], 'u.lastname', '', $paramList, '', $sortfield, $sortorder);
-print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitGroup'), $_SERVER['PHP_SELF'], 'ug.nom', '', $paramList, '', $sortfield, $sortorder);
-print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitAmountHt'), $_SERVER['PHP_SELF'], 't.amount_ht', '', $paramList, '', $sortfield, $sortorder, 'right ');
-print_liste_field_titre($langs->trans('LmdbSupplierOrderLimitUnlimited'), $_SERVER['PHP_SELF'], 't.unlimited', '', $paramList, '', $sortfield, $sortorder, 'center ');
-print_liste_field_titre($langs->trans('Status'), $_SERVER['PHP_SELF'], 't.active', '', $paramList, '', $sortfield, $sortorder, 'center ');
-print_liste_field_titre($langs->trans('Date'), $_SERVER['PHP_SELF'], 't.date_start', '', $paramList, '', $sortfield, $sortorder);
-print_liste_field_titre($langs->trans('Action'), $_SERVER['PHP_SELF'], '', '', $paramList, '', $sortfield, $sortorder, 'right ');
-print '</tr>';
-
-if (count($records) === 0) {
-	print '<tr class="oddeven"><td colspan="7"><span class="opacitymedium">'.$langs->trans('NoRecordFound').'</span></td></tr>';
+foreach ($visibleFields as $field => $definition) {
+	print '<td class="liste_titre">';
+	if ($field === 't.limit_type') { print Form::selectarray('search_type', $typeLabels, $searchType, 1).ajax_combobox('search_type'); }
+	elseif ($field === 't.entity') { print Form::multiselectarray('search_entities', $entityLabels, $searchEntities, 0, 0, 'minwidth200'); }
+	elseif ($field === 'u.lastname') { print $form->select_dolusers($searchUser, 'search_user', 1, null, 0, '', '', (string) (getDolGlobalInt('MULTICOMPANY_TRANSVERSE_MODE') ? 1 : $conf->entity)); }
+	elseif ($field === 'ug.nom') { print $form->select_dolgroups($searchGroup, 'search_group', 1, '', 0, '', array(), (int) $conf->entity); }
+	elseif ($field === 't.active') { print Form::selectarray('search_active', array('1'=>$langs->trans('LmdbSupplierOrderLimitActive'),'0'=>$langs->trans('LmdbSupplierOrderLimitInactive')), $searchActive, 1).ajax_combobox('search_active'); }
+	print '</td>';
 }
-
+print '<td class="liste_titre center maxwidthsearch">'.$form->showFilterButtons().'</td></tr><tr class="liste_titre">';
+foreach ($visibleFields as $field => $definition) {
+	print_liste_field_titre($langs->trans($definition['label']), $_SERVER['PHP_SELF'], $field, '', $paramList, '', $sortfield, $sortorder);
+}
+print '<td class="right">'.$selectedfields.'</td></tr>';
+if (!$records) {
+	print '<tr class="oddeven"><td colspan="'.$colspan.'"><span class="opacitymedium">'.$langs->trans('NoRecordFound').'</span></td></tr>';
+}
 foreach ($records as $record) {
+	$localRule = (int) $record->entity === (int) $conf->entity;
 	print '<tr class="oddeven">';
-	print '<td>'.lmdbsupplierorderlimitRenderUserLink($db, $record).'</td>';
-	print '<td>'.lmdbsupplierorderlimitRenderUserGroupLink($db, $record).'</td>';
-	print '<td class="right">'.($record->amount_ht !== null ? price((float) $record->amount_ht) : '').'</td>';
-	print '<td class="center">'.($record->unlimited ? $langs->trans('Yes') : $langs->trans('No')).'</td>';
-	print '<td class="center">'.$record->getLibStatut(1).'</td>';
-	print '<td>'.(!empty($record->date_start) ? dol_print_date((int) $record->date_start, 'day') : '').' - '.(!empty($record->date_end) ? dol_print_date((int) $record->date_end, 'day') : '').'</td>';
+	foreach ($visibleFields as $field => $definition) {
+		print '<td'.($field === 't.entity' ? ' align="center"' : '').'>';
+		if ($field === 't.limit_type') { print dol_escape_htmltag($typeLabels[$record->limit_type] ?? $record->limit_type); }
+		elseif ($field === 't.entity') {
+			print '<div class="refidno multicompany-entity-card-container"><span class="fa fa-globe"></span><span class="multiselect-selected-title-text">'.dol_escape_htmltag($entityLabels[$record->entity] ?? '').'</span></div>';
+		}
+		elseif ($field === 'u.lastname') { print lmdbsupplierorderlimitRenderUserLink($db, $record); }
+		elseif ($field === 'ug.nom') { print lmdbsupplierorderlimitRenderUserGroupLink($db, $record); }
+		elseif ($field === 't.amount_ht') { print $record->limit_type === 'project_budget' ? $langs->trans('LimitNativeProjectBudget') : ($record->amount_ht !== null ? price($record->amount_ht) : ''); }
+		elseif ($field === 't.unlimited') { print $langs->trans($record->unlimited ? 'Yes' : 'No'); }
+		elseif ($field === 't.active') { print $record->getLibStatut(1); }
+		elseif ($field === 't.date_start') { print ($record->date_start ? dol_print_date((int) $record->date_start, 'day') : '').' - '.($record->date_end ? dol_print_date((int) $record->date_end, 'day') : ''); }
+		print '</td>';
+	}
 	print '<td class="right">';
-	if ($permissiontowrite) {
+	if ($permissiontowrite && $localRule) {
 		print '<a class="editfielda lmdbsupplierorderlimit-open-modal" href="'.$_SERVER['PHP_SELF'].'?action=edit&id='.(int) $record->id.'&token='.$token.$listUrlParams.'" data-target="#lmdbsupplierorderlimit-limit-modal-edit-'.((int) $record->id).'">'.img_edit().'</a> ';
 	}
-	if ($permissiontodelete && !empty($record->active)) {
-		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_picto($langs->trans('Disable'), 'disable').'</a> ';
+	if ($permissiontowrite && $localRule && $record->active) {
+		print '<a href="'.$_SERVER['PHP_SELF'].'?action=disable&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_picto($langs->trans('Disable'), 'disable').'</a> ';
 	}
-	if ($permissiontodelete) {
-		print '<a class="reposition" href="'.$_SERVER['PHP_SELF'].'?action=delete&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_delete().'</a>';
+	if ($permissiontodelete && $localRule) {
+		print '<a href="'.$_SERVER['PHP_SELF'].'?action=delete&id='.(int) $record->id.'&token='.$token.$listUrlParams.'">'.img_delete().'</a>';
 	}
-	print '</td>';
-	print '</tr>';
+	print '</td></tr>';
 }
-
-print '</table>';
+print '</table></div>';
 print '</form>';
-lmdbsupplierorderlimitPrintListLimitAutoSubmitScript('limitfilter');
 
 if ($permissiontowrite) {
 	$createObject = new LmdbSupplierOrderLimitLimit($db);
@@ -324,6 +349,7 @@ if ($permissiontowrite) {
 	lmdbsupplierorderlimitPrintLimitModal($form, $createObject, $token, 'limitcreate', 'lmdbsupplierorderlimit-limit-modal-create', $langs->trans('New'));
 
 	foreach ($records as $record) {
+		if ((int) $record->entity !== (int) $conf->entity) { continue; }
 		$editObject = $record;
 		if (is_object($formObjectWithErrors) && (int) $formObjectWithErrors->id === (int) $record->id) {
 			$editObject = $formObjectWithErrors;
@@ -371,7 +397,7 @@ function lmdbsupplierorderlimitAdminGetPostedDate($prefix)
  */
 function lmdbsupplierorderlimitPrintLimitModal($form, $editObject, $token, $fieldPrefix, $modalId, $title)
 {
-	global $langs;
+	global $langs, $typeLabels, $conf;
 
 	$htmlPrefix = $fieldPrefix !== '' ? $fieldPrefix.'_' : '';
 	$formId = $htmlPrefix.'limitform';
@@ -384,14 +410,15 @@ function lmdbsupplierorderlimitPrintLimitModal($form, $editObject, $token, $fiel
 	print '<input type="hidden" name="action" value="'.($editObject->id ? 'update' : 'create').'">';
 	print '<input type="hidden" name="id" value="'.(int) $editObject->id.'">';
 	print '<table class="noborder centpercent">';
+	print '<tr><td class="fieldrequired">'.$langs->trans('LimitType').'</td><td>'.Form::selectarray($htmlPrefix.'limit_type', $typeLabels, $editObject->limit_type).ajax_combobox($htmlPrefix.'limit_type').'<br><span class="opacitymedium">'.$langs->trans('LimitNativeProjectBudgetHelp').'</span></td></tr>';
 	print '<tr><td class="titlefieldcreate">'.$langs->trans('LmdbSupplierOrderLimitTargetType').'</td><td>';
 	print '<select name="'.dol_escape_htmltag($htmlPrefix.'target_type').'" id="'.dol_escape_htmltag($htmlPrefix.'target_type').'" class="flat minwidth200">';
 	print '<option value="user"'.($targetType === 'user' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitUser').'</option>';
 	print '<option value="group"'.($targetType === 'group' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</option>';
 	print '</select>'.ajax_combobox($htmlPrefix.'target_type');
 	print '</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUser').'</td><td>'.$form->select_dolusers($editObject->fk_user, $htmlPrefix.'fk_user', 1).'</td></tr>';
-	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</td><td>'.$form->select_dolgroups($editObject->fk_usergroup, $htmlPrefix.'fk_usergroup', 1).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUser').'</td><td>'.$form->select_dolusers($editObject->fk_user, $htmlPrefix.'fk_user', 1, null, 0, '', '', (string) (getDolGlobalInt('MULTICOMPANY_TRANSVERSE_MODE') ? 1 : $conf->entity)).'</td></tr>';
+	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitGroup').'</td><td>'.$form->select_dolgroups($editObject->fk_usergroup, $htmlPrefix.'fk_usergroup', 1, '', 0, '', array(), (int) $conf->entity).'</td></tr>';
 	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitAmountHt').'</td><td><input class="flat right" type="text" name="'.dol_escape_htmltag($htmlPrefix.'amount_ht').'" value="'.dol_escape_htmltag((string) $editObject->amount_ht).'"></td></tr>';
 	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitUnlimited').'</td><td>'.$form->selectyesno($htmlPrefix.'unlimited', (int) $editObject->unlimited, 1).'</td></tr>';
 	print '<tr><td>'.$langs->trans('LmdbSupplierOrderLimitActive').'</td><td>'.$form->selectyesno($htmlPrefix.'active', (int) $editObject->active, 1).'</td></tr>';

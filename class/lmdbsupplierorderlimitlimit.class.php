@@ -8,6 +8,8 @@
  */
 
 require_once DOL_DOCUMENT_ROOT.'/core/class/commonobject.class.php';
+require_once __DIR__.'/lmdbsupplierorderlimitscope.class.php';
+require_once __DIR__.'/lmdbsupplierorderlimitconsumption.class.php';
 
 /**
  * Approval limit rule.
@@ -18,6 +20,10 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	 * @var string Module key
 	 */
 	public $module = 'lmdbsupplierorderlimit';
+	/** @var string */
+	public $TRIGGER_PREFIX = 'LMDBSUPPLIERORDERLIMIT_LIMIT';
+	/** @var string */
+	public $limit_type = 'order';
 
 	/**
 	 * @var string Object element
@@ -100,6 +106,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		'entity' => array('type' => 'integer', 'label' => 'Entity', 'enabled' => 1, 'visible' => -2, 'notnull' => 1, 'index' => 1, 'position' => 5),
 		'fk_user' => array('type' => 'integer:User:user/class/user.class.php', 'label' => 'LmdbSupplierOrderLimitUser', 'enabled' => 1, 'visible' => 1, 'notnull' => 0, 'index' => 1, 'position' => 10),
 		'fk_usergroup' => array('type' => 'integer', 'label' => 'LmdbSupplierOrderLimitGroup', 'enabled' => 1, 'visible' => 1, 'notnull' => 0, 'index' => 1, 'position' => 20),
+		'limit_type' => array('type' => 'varchar(16)', 'label' => 'LimitType', 'enabled' => 1, 'visible' => 1, 'notnull' => 1, 'position' => 25),
 		'amount_ht' => array('type' => 'price', 'label' => 'LmdbSupplierOrderLimitAmountHt', 'enabled' => 1, 'visible' => 1, 'notnull' => 0, 'position' => 30),
 		'unlimited' => array('type' => 'boolean', 'label' => 'LmdbSupplierOrderLimitUnlimited', 'enabled' => 1, 'visible' => 1, 'notnull' => 1, 'position' => 40),
 		'active' => array('type' => 'boolean', 'label' => 'LmdbSupplierOrderLimitActive', 'enabled' => 1, 'visible' => 1, 'notnull' => 1, 'index' => 1, 'position' => 50),
@@ -136,28 +143,51 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 
 		$this->fk_user = !empty($this->fk_user) ? (int) $this->fk_user : null;
 		$this->fk_usergroup = !empty($this->fk_usergroup) ? (int) $this->fk_usergroup : null;
-		$this->unlimited = empty($this->unlimited) ? 0 : 1;
-		$this->active = empty($this->active) ? 0 : 1;
+		if (!in_array((string) $this->unlimited, array('0','1'), true) || !in_array((string) $this->active, array('0','1'), true)) {
+			$this->errors[] = $langs->trans('LimitInvalidRule');
+		}
+		$this->unlimited = (int) $this->unlimited;
+		$this->active = (int) $this->active;
 
 		if ((!empty($this->fk_user) && !empty($this->fk_usergroup)) || (empty($this->fk_user) && empty($this->fk_usergroup))) {
 			$this->errors[] = $langs->trans('LmdbSupplierOrderLimitRuleInvalidTarget');
 		}
 
-		if (empty($this->unlimited)) {
-			if ($this->amount_ht === null || $this->amount_ht === '') {
-				$this->errors[] = $langs->trans('LmdbSupplierOrderLimitRuleAmountRequired');
-			} else {
-				$amount = function_exists('price2num') ? price2num($this->amount_ht, 'MU') : $this->amount_ht;
-				if (!is_numeric($amount)) {
-					$this->errors[] = $langs->trans('LmdbSupplierOrderLimitInvalidAmount');
-				} elseif ((float) $amount < 0) {
-					$this->errors[] = $langs->trans('LmdbSupplierOrderLimitRuleAmountNegative');
-				} else {
-					$this->amount_ht = (string) price2num($amount, 'MU');
-				}
-			}
+		if (!isset(LmdbSupplierOrderLimitPolicy::TYPES[$this->limit_type])) {
+			$this->errors[] = $langs->trans('LimitInvalidRule');
+		}
+		if (!$this->unlimited && $this->limit_type !== 'project_budget') {
+			$this->amount_ht = LmdbSupplierOrderLimitPolicy::amount($this->amount_ht);
+			if ($this->amount_ht === null) { $this->errors[] = $langs->trans('LmdbSupplierOrderLimitInvalidAmount'); }
 		} else {
 			$this->amount_ht = null;
+		}
+		foreach ($this->fields as $name => $definition) {
+			if ($definition['visible'] === 1 && !$this->validateField($this->fields, $name, (string) ($this->{$name} ?? ''))) {
+				$this->errors[] = $this->getFieldError($name);
+			}
+		}
+		if ($this->date_start && $this->date_end && $this->date_start > $this->date_end) { $this->errors[] = $langs->trans('LimitInvalidRule'); }
+		try {
+			$scope = LmdbSupplierOrderLimitScope::context($this->db, (int) $this->entity);
+			if ($this->fk_user) {
+				$sql = 'SELECT u.rowid FROM '.MAIN_DB_PREFIX.'user u WHERE u.rowid = '.(int) $this->fk_user.' AND u.entity IN ('.implode(',', $scope['users']).') AND (u.fk_soc IS NULL OR u.fk_soc = 0)';
+				if ($scope['transverse']) {
+					$sql .= ' AND (u.entity = 0 OR EXISTS (SELECT gu.fk_user FROM '.MAIN_DB_PREFIX.'usergroup_user gu INNER JOIN '.MAIN_DB_PREFIX.'usergroup g ON g.rowid = gu.fk_usergroup';
+					$sql .= ' WHERE gu.fk_user = u.rowid AND gu.entity IN (0,'.(int) $this->entity.') AND g.entity IN ('.implode(',', $scope['groups']).')))';
+				}
+			} else {
+				$sql = 'SELECT rowid FROM '.MAIN_DB_PREFIX.'usergroup WHERE rowid = '.(int) $this->fk_usergroup.' AND entity IN ('.implode(',', $scope['groups']).')';
+			}
+			$result = $this->db->query($sql);
+			if (!$result) { throw new RuntimeException('LimitTechnicalError'); }
+			if (!is_object($this->db->fetch_object($result))) { $this->errors[] = $langs->trans('LmdbSupplierOrderLimitRuleInvalidTarget'); }
+			if ($this->active && !$this->unlimited && in_array($this->limit_type, array('day','month','year'), true)) {
+				$ledger = new LmdbSupplierOrderLimitConsumption($this->db);
+				$ledger->assertReady((int) $this->entity);
+			}
+		} catch (Throwable $e) {
+			$this->errors[] = $langs->trans($e->getMessage() === 'history_incomplete' ? 'LimitHistoryIncomplete' : 'LimitTechnicalError');
 		}
 
 		if (!empty($this->errors)) {
@@ -178,6 +208,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	public function create($user, $notrigger = 0)
 	{
 		global $conf;
+		if (!isModEnabled('lmdbsupplierorderlimit') || !$user->hasRight('lmdbsupplierorderlimit', 'limit', 'write') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
 
 		$this->entity = (int) $conf->entity;
 		$this->fk_user_creat = (int) $user->id;
@@ -189,9 +220,10 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$this->db->begin();
 
 		$sql = 'INSERT INTO '.MAIN_DB_PREFIX.$this->table_element.' (';
-		$sql .= 'entity, fk_user, fk_usergroup, amount_ht, unlimited, active, date_start, date_end, note_private, date_creation, fk_user_creat, import_key';
+		$sql .= 'entity, limit_type, fk_user, fk_usergroup, amount_ht, unlimited, active, date_start, date_end, note_private, date_creation, fk_user_creat, import_key';
 		$sql .= ') VALUES (';
 		$sql .= ((int) $this->entity).', ';
+		$sql .= "'".$this->db->escape($this->limit_type)."', ";
 		$sql .= ($this->fk_user ? ((int) $this->fk_user) : 'NULL').', ';
 		$sql .= ($this->fk_usergroup ? ((int) $this->fk_usergroup) : 'NULL').', ';
 		$sql .= ($this->amount_ht !== null && $this->amount_ht !== '' ? "'".$this->db->escape((string) $this->amount_ht)."'" : 'NULL').', ';
@@ -237,7 +269,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	{
 		global $conf;
 
-		$sql = 'SELECT t.rowid, t.entity, t.fk_user, t.fk_usergroup, t.amount_ht, t.unlimited, t.active,';
+		$sql = 'SELECT t.rowid, t.entity, t.limit_type, t.fk_user, t.fk_usergroup, t.amount_ht, t.unlimited, t.active,';
 		$sql .= ' t.date_start, t.date_end, t.note_private, t.date_creation, t.tms, t.fk_user_creat, t.fk_user_modif, t.import_key';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
 		$sql .= ' WHERE t.rowid = '.((int) $id);
@@ -268,6 +300,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	public function update($user, $notrigger = 0)
 	{
 		global $conf;
+		if (!isModEnabled('lmdbsupplierorderlimit') || !$user->hasRight('lmdbsupplierorderlimit', 'limit', 'write') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
 
 		if (empty($this->id) && !empty($this->rowid)) {
 			$this->id = (int) $this->rowid;
@@ -293,6 +326,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$sql = 'UPDATE '.MAIN_DB_PREFIX.$this->table_element.' SET';
 		$sql .= ' fk_user = '.($this->fk_user ? ((int) $this->fk_user) : 'NULL');
 		$sql .= ', fk_usergroup = '.($this->fk_usergroup ? ((int) $this->fk_usergroup) : 'NULL');
+		$sql .= ", limit_type = '".$this->db->escape($this->limit_type)."'";
 		$sql .= ', amount_ht = '.($this->amount_ht !== null && $this->amount_ht !== '' ? "'".$this->db->escape((string) $this->amount_ht)."'" : 'NULL');
 		$sql .= ', unlimited = '.((int) $this->unlimited);
 		$sql .= ', active = '.((int) $this->active);
@@ -347,6 +381,8 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	public function delete($user, $notrigger = 0)
 	{
 		global $conf;
+		if (!isModEnabled('lmdbsupplierorderlimit') || !$user->hasRight('lmdbsupplierorderlimit', 'limit', 'delete') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
+		if ($this->fetch((int) $this->id) <= 0) { $this->error = 'Record not found'; return -1; }
 
 		if (empty($this->id) && !empty($this->rowid)) {
 			$this->id = (int) $this->rowid;
@@ -390,17 +426,19 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	 */
 	public function fetchAll($limit = 100, $offset = 0, $filters = array(), $sortfield = '', $sortorder = '')
 	{
-		global $conf;
+		global $conf, $user;
+		if (!$user->hasRight('lmdbsupplierorderlimit', 'limit', 'read') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
+		try { $scope = LmdbSupplierOrderLimitScope::context($this->db, (int) $conf->entity); } catch (Throwable $e) { $this->error = 'LimitTechnicalError'; return -1; }
 
 		$records = array();
-		$sql = 'SELECT t.rowid, t.entity, t.fk_user, t.fk_usergroup, t.amount_ht, t.unlimited, t.active,';
+		$sql = 'SELECT t.rowid, t.entity, t.limit_type, t.fk_user, t.fk_usergroup, t.amount_ht, t.unlimited, t.active,';
 		$sql .= ' t.date_start, t.date_end, t.note_private, t.date_creation, t.tms, t.fk_user_creat, t.fk_user_modif, t.import_key,';
 		$sql .= ' u.login AS user_login, u.lastname AS user_lastname, u.firstname AS user_firstname, u.photo AS user_photo,';
 		$sql .= ' u.statut AS user_status, u.email AS user_email, u.admin AS user_admin, u.entity AS user_entity, ug.nom AS group_name';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
-		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'user AS u ON u.rowid = t.fk_user';
-		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'usergroup AS ug ON ug.rowid = t.fk_usergroup';
-		$sql .= ' WHERE t.entity = '.((int) $conf->entity);
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'user AS u ON u.rowid = t.fk_user AND u.entity IN ('.implode(',', $scope['users']).')';
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'usergroup AS ug ON ug.rowid = t.fk_usergroup AND ug.entity IN ('.implode(',', $scope['groups']).')';
+		$sql .= ' WHERE t.entity IN ('.implode(',', $scope['entities']).')';
 		$sql .= $this->buildWhereFromFilters($filters);
 		$sql .= $this->buildOrderBy($sortfield, $sortorder);
 		$sql .= $this->db->plimit((int) $limit, (int) $offset);
@@ -431,6 +469,8 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	{
 		$allowedSortFields = array(
 			't.rowid' => 't.rowid',
+			't.limit_type' => 't.limit_type',
+			't.entity' => 't.entity',
 			'u.lastname' => 'u.lastname',
 			'u.firstname' => 'u.firstname',
 			'u.login' => 'u.login',
@@ -477,11 +517,13 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	 */
 	public function countAll($filters = array())
 	{
-		global $conf;
+		global $conf, $user;
+		if (!$user->hasRight('lmdbsupplierorderlimit', 'limit', 'read') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
+		try { $scope = LmdbSupplierOrderLimitScope::context($this->db, (int) $conf->entity); } catch (Throwable $e) { $this->error = 'LimitTechnicalError'; return -1; }
 
 		$sql = 'SELECT COUNT(t.rowid) AS nb';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
-		$sql .= ' WHERE t.entity = '.((int) $conf->entity);
+		$sql .= ' WHERE t.entity IN ('.implode(',', $scope['entities']).')';
 		$sql .= $this->buildWhereFromFilters($filters);
 
 		$resql = $this->db->query($sql);
@@ -551,6 +593,7 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 		$this->rowid = (int) $obj->rowid;
 		$this->id = (int) $obj->rowid;
 		$this->entity = (int) $obj->entity;
+		$this->limit_type = (string) $obj->limit_type;
 		$this->fk_user = $obj->fk_user !== null ? (int) $obj->fk_user : null;
 		$this->fk_usergroup = $obj->fk_usergroup !== null ? (int) $obj->fk_usergroup : null;
 		$this->amount_ht = $obj->amount_ht !== null ? (string) $obj->amount_ht : null;
@@ -603,6 +646,8 @@ class LmdbSupplierOrderLimitLimit extends CommonObject
 	private function buildWhereFromFilters($filters)
 	{
 		$sql = '';
+		if (!empty($filters['limit_type']) && isset(LmdbSupplierOrderLimitPolicy::TYPES[$filters['limit_type']])) { $sql .= " AND t.limit_type = '".$this->db->escape($filters['limit_type'])."'"; }
+		if (!empty($filters['entities']) && is_array($filters['entities'])) { $sql .= ' AND t.entity IN ('.implode(',', array_map('intval', $filters['entities'])).')'; }
 
 		if (!empty($filters['fk_user'])) {
 			$sql .= ' AND t.fk_user = '.((int) $filters['fk_user']);

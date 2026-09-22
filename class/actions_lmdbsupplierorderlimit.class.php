@@ -16,6 +16,86 @@ dol_include_once('/lmdbsupplierorderlimit/class/lmdbsupplierorderlimitlog.class.
  */
 class ActionsLmdbSupplierOrderLimit
 {
+	/** Original core configuration values are kept unmodified for exact restoration.
+	 * @var array<string,array{exists:bool,value:mixed,assigned:int|string}>
+	 */
+	private static $workflow = array();
+	/** @var int */
+	private static $workflowOrder = 0;
+
+	/** Restore temporary settings before another order can be processed. */
+	public static function restoreWorkflow(): void
+	{
+		global $conf;
+		foreach (self::$workflow as $key => $state) {
+			if (($conf->global->{$key} ?? null) !== $state['assigned']) { continue; }
+			if ($state['exists']) { $conf->global->{$key} = $state['value']; } else { unset($conf->global->{$key}); }
+		}
+		self::$workflow = array();
+		self::$workflowOrder = 0;
+	}
+
+	/**
+	 * @param CommandeFournisseur $order
+	 * @param int|string $value
+	 */
+	private function scopeWorkflow($order, string $key, $value): void
+	{
+		global $conf;
+		if (self::$workflowOrder !== (int) $order->id) { self::restoreWorkflow(); }
+		if (!self::$workflow) { register_shutdown_function(array(self::class, 'restoreWorkflow')); }
+		self::$workflowOrder = (int) $order->id;
+		if (!isset(self::$workflow[$key])) { self::$workflow[$key] = array('exists' => property_exists($conf->global, $key), 'value' => $conf->global->{$key} ?? null, 'assigned' => $value); }
+		self::$workflow[$key]['assigned'] = $value;
+		$conf->global->{$key} = $value;
+	}
+
+	/** Single native Multicompany definition, also persisted by the descriptor.
+	 * @return array<string,array{sharingelements:array<string,array{type:string,icon:string,lang:string,tooltip:string,enable:string,input:array{global:array{showhide:bool,hide:bool,del:bool}}}>,sharingmodulename:array<string,string>,dictionary:array{}}>
+	 */
+	public static function getMulticompanySharingDefinition(): array
+	{
+		return array('lmdbsupplierorderlimit' => array(
+			'sharingelements' => array('lmdbsupplierorderlimit_limit' => array('type' => 'element', 'icon' => 'supplier_order', 'lang' => 'lmdbsupplierorderlimit@lmdbsupplierorderlimit', 'tooltip' => 'LimitSharingInfo', 'enable' => 'isModEnabled("lmdbsupplierorderlimit")', 'input' => array('global' => array('showhide' => true, 'hide' => true, 'del' => true)))),
+			'sharingmodulename' => array('lmdbsupplierorderlimit_limit' => 'lmdbsupplierorderlimit'), 'dictionary' => array()));
+	}
+
+	/**
+	 * @param array<string,mixed> $parameters
+	 * @param mixed $object
+	 * @param string $action
+	 * @param HookManager $hookmanager
+	 * @return int
+	 */
+	public function multicompanyExternalModulesSharing($parameters, &$object, &$action, $hookmanager)
+	{
+		$this->results = array_replace_recursive($this->results, self::getMulticompanySharingDefinition());
+		return 0;
+	}
+	/**
+	 * @param array<string,mixed> $parameters
+	 * @param mixed $object
+	 * @param string $action
+	 * @param HookManager $hookmanager
+	 * @return int
+	 */
+	public function multicompanyExternalModuleSharing($parameters, &$object, &$action, $hookmanager)
+	{
+		$this->results = array_replace_recursive($this->results, self::getMulticompanySharingDefinition());
+		return 0;
+	}
+	/**
+	 * @param array<string,mixed> $parameters
+	 * @param mixed $object
+	 * @param string $action
+	 * @param HookManager $hookmanager
+	 * @return int
+	 */
+	public function multicompanySharingOptions($parameters, &$object, &$action, $hookmanager)
+	{
+		$this->results = array_replace_recursive($this->results, self::getMulticompanySharingDefinition());
+		return 0;
+	}
 	/** @var DoliDB */
 	public $db;
 	/** @var string */
@@ -49,6 +129,7 @@ class ActionsLmdbSupplierOrderLimit
 	public function doActions($parameters, &$object, &$action, $hookmanager)
 	{
 		global $conf, $langs, $user;
+		self::restoreWorkflow();
 
 		if (!$this->isSupplierOrderCardContext($parameters) || !isModEnabled('lmdbsupplierorderlimit')) {
 			return 0;
@@ -77,7 +158,6 @@ class ActionsLmdbSupplierOrderLimit
 				$this->forceNativeSecondLevelApprovalIfNeeded($object);
 			}
 
-			LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $decision, 'approval_allowed', 'hook', 'allowed');
 			return 0;
 		}
 
@@ -85,7 +165,7 @@ class ActionsLmdbSupplierOrderLimit
 			$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 1);
 			if (empty($decision['allowed'])) {
 				// Runtime-only override: it prevents direct validate+approve for this request without writing SUPPLIER_ORDER_NO_DIRECT_APPROVE in database.
-				$conf->global->SUPPLIER_ORDER_NO_DIRECT_APPROVE = 1;
+				$this->scopeWorkflow($object, 'SUPPLIER_ORDER_NO_DIRECT_APPROVE', 1);
 				if ($action === 'confirm_valid') {
 					LmdbSupplierOrderLimitLog::createFromDecision($this->db, $user, $object, $decision, 'approval_direct_validate_blocked', 'hook', 'direct validate approval blocked');
 				}
@@ -109,6 +189,7 @@ class ActionsLmdbSupplierOrderLimit
 	public function addMoreActionsButtons($parameters, &$object, &$action, $hookmanager)
 	{
 		global $conf, $langs, $user;
+		if (self::$workflowOrder && (!is_object($object) || (int) $object->id !== self::$workflowOrder)) { self::restoreWorkflow(); }
 
 		if (!$this->isSupplierOrderCardContext($parameters) || !isModEnabled('lmdbsupplierorderlimit')) {
 			return 0;
@@ -125,7 +206,7 @@ class ActionsLmdbSupplierOrderLimit
 		if ($status === 0 && $user->hasRight('fournisseur', 'commande', 'approuver')) {
 			$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($this->db, $user, $object, 1);
 			if (empty($decision['allowed'])) {
-				$conf->global->SUPPLIER_ORDER_NO_DIRECT_APPROVE = 1;
+				$this->scopeWorkflow($object, 'SUPPLIER_ORDER_NO_DIRECT_APPROVE', 1);
 			} else {
 				$this->forceNativeSecondLevelApprovalIfNeeded($object);
 			}
@@ -215,7 +296,7 @@ class ActionsLmdbSupplierOrderLimit
 		}
 
 		// Runtime-only override: it makes core approve() keep status validated after first approval without changing persisted Dolibarr settings.
-		$conf->global->SUPPLIER_ORDER_3_STEPS_TO_BE_APPROVED = $this->getNativeSecondLevelThreshold($object);
+		$this->scopeWorkflow($object, 'SUPPLIER_ORDER_3_STEPS_TO_BE_APPROVED', $this->getNativeSecondLevelThreshold($object));
 	}
 
 	/**
@@ -226,12 +307,13 @@ class ActionsLmdbSupplierOrderLimit
 	 */
 	private function getNativeSecondLevelThreshold($object)
 	{
-		$orderAmount = is_object($object) && isset($object->total_ht) ? LmdbSupplierOrderLimitAuthorizer::normalizeAmount($object->total_ht) : null;
-		if ($orderAmount !== null && LmdbSupplierOrderLimitAuthorizer::compareDecimalAmount($orderAmount, '0') > 0) {
+		$orderAmount = is_object($object) && isset($object->total_ht) ? LmdbSupplierOrderLimitPolicy::amount($object->total_ht) : null;
+		if ($orderAmount !== null && LmdbSupplierOrderLimitPolicy::compare($orderAmount, '0') > 0) {
 			return $orderAmount;
 		}
 
-		return '0.00000001';
+		// A nonzero, negative sentinel also routes a zero-total order through native level two.
+		return '-1';
 	}
 
 	/**

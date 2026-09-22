@@ -4,6 +4,7 @@ CREATE TABLE IF NOT EXISTS llx_lmdbsupplierorderlimit_limit
 	entity integer DEFAULT 1 NOT NULL,
 	fk_user integer NULL,
 	fk_usergroup integer NULL,
+	limit_type varchar(16) DEFAULT 'order' NOT NULL,
 	amount_ht decimal(24,8) NULL,
 	unlimited tinyint DEFAULT 0 NOT NULL,
 	active tinyint DEFAULT 1 NOT NULL,
@@ -20,6 +21,6 @@ CREATE TABLE IF NOT EXISTS llx_lmdbsupplierorderlimit_limit
 	INDEX idx_lmdbsupplierorderlimit_limit_fk_usergroup (fk_usergroup),
 	INDEX idx_lmdbsupplierorderlimit_limit_active (active),
 	INDEX idx_lmdbsupplierorderlimit_limit_dates (date_start, date_end),
-	UNIQUE KEY uk_lmdbsupplierorderlimit_limit_user_entity (entity, fk_user),
-	UNIQUE KEY uk_lmdbsupplierorderlimit_limit_group_entity (entity, fk_usergroup)
+	UNIQUE KEY uk_lmdbsol_user_type (entity, fk_user, limit_type),
+	UNIQUE KEY uk_lmdbsol_group_type (entity, fk_usergroup, limit_type)
 ) ENGINE=innodb;

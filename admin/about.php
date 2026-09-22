@@ -9,14 +9,16 @@
 
 require '../../../main.inc.php';
 dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
+require_once __DIR__.'/../core/modules/modLmdbSupplierOrderLimit.class.php';
+$descriptor = new modLmdbSupplierOrderLimit($db);
 
 $langs->loadLangs(array('admin', 'lmdbsupplierorderlimit@lmdbsupplierorderlimit'));
 
-if (!isModEnabled('lmdbsupplierorderlimit')) {
+if (!isModEnabled('lmdbsupplierorderlimit') || !empty($user->socid)) {
 	accessforbidden();
 }
 
-if (!lmdbsupplierorderlimitUserCan($user, 'config', 'write')) {
+if (!$user->admin) {
 	accessforbidden();
 }
 
@@ -31,10 +33,10 @@ print dol_get_fiche_head($head, 'about', $langs->trans('LmdbSupplierOrderLimit')
 print '<table class="noborder centpercent">';
 print '<tr class="liste_titre"><td class="titlefield">'.$langs->trans('Parameter').'</td><td>'.$langs->trans('Value').'</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('Module').'</td><td>'.$langs->trans('LmdbSupplierOrderLimit').'</td></tr>';
-print '<tr class="oddeven"><td>'.$langs->trans('Version').'</td><td>1.0.0</td></tr>';
-print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitAboutPublisher').'</td><td>Pierre Ardoin &lt;developpeur@lesmetiersdubatiment.fr&gt;</td></tr>';
+print '<tr class="oddeven"><td>'.$langs->trans('Version').'</td><td>'.dol_escape_htmltag($descriptor->version).'</td></tr>';
+print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitAboutPublisher').'</td><td>'.dol_escape_htmltag($descriptor->editor_name).'</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('Description').'</td><td>'.$langs->trans('LmdbSupplierOrderLimitDescription').'</td></tr>';
-print '<tr class="oddeven"><td>'.$langs->trans('Compatibility').'</td><td>Dolibarr 20+ / PHP 8.0+</td></tr>';
+print '<tr class="oddeven"><td>'.$langs->trans('Compatibility').'</td><td>Dolibarr '.dol_escape_htmltag(implode('.', $descriptor->need_dolibarr_version)).'+ / PHP '.dol_escape_htmltag(implode('.', $descriptor->phpmin)).'+</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitAboutDependencies').'</td><td>'.$langs->trans('Module105Name').'</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitAboutMainFeatures').'</td><td>';
 print '<ul>';

@@ -54,7 +54,8 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 		$this->module_parts = array(
 			'triggers' => 1,
 			'hooks' => array(
-				'ordersuppliercard',
+				'data' => array('ordersuppliercard', 'multicompanyexternalmodulesharing', 'multicompanyexternalmodules', 'multicompanysharingoptions'),
+				'entity' => '0',
 			),
 		);
 
@@ -117,12 +118,28 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 	 */
 	public function init($options = '')
 	{
+		global $conf, $langs;
 		$result = $this->_load_tables('/lmdbsupplierorderlimit/sql/');
-		if ($result < 0) {
+		if ($result <= 0) {
 			return -1;
 		}
 
-		$this->initDefaultConstants();
+		require_once __DIR__.'/../../class/lmdbsupplierorderlimitmigration.class.php';
+		require_once __DIR__.'/../../class/actions_lmdbsupplierorderlimit.class.php';
+		try {
+			LmdbSupplierOrderLimitMigration::schema($this->db);
+			$this->initDefaultConstants();
+			$this->persistSharing();
+			$this->db->begin();
+			$ledger = new LmdbSupplierOrderLimitConsumption($this->db);
+			$ambiguous = $ledger->reconcile((int) $conf->entity);
+			$this->db->commit();
+			if ($ambiguous) { setEventMessages($langs->trans('LimitHistoryIncomplete'), null, 'warnings'); }
+		} catch (Throwable $e) {
+			if (!empty($this->db->transaction_opened)) { $this->db->rollback(); }
+			$this->error = $langs->trans('LimitTechnicalError');
+			return -1;
+		}
 
 		$sql = array();
 		return $this->_init($sql, $options);
@@ -136,6 +153,8 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 	 */
 	public function remove($options = '')
 	{
+		require_once __DIR__.'/../../class/actions_lmdbsupplierorderlimit.class.php';
+		try { $this->persistSharing(); } catch (Throwable $e) { $this->error = 'LimitTechnicalError'; return -1; }
 		$sql = array();
 		return $this->_remove($sql, $options);
 	}
@@ -153,7 +172,9 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 			'LMDBSUPPLIERORDERLIMIT_SHOW_DENIED_MESSAGE' => array('value' => '1', 'type' => 'yesno'),
 			'LMDBSUPPLIERORDERLIMIT_LOG_ALLOWED_APPROVALS' => array('value' => '0', 'type' => 'yesno'),
 			'LMDBSUPPLIERORDERLIMIT_LOG_DENIED_APPROVALS' => array('value' => '1', 'type' => 'yesno'),
-			'LMDBSUPPLIERORDERLIMIT_DIRECT_USER_PRIORITY' => array('value' => '1', 'type' => 'yesno'),
+			'LMDBSUPPLIERORDERLIMIT_DAY_MODE' => array('value' => 'civil', 'type' => 'chaine'),
+			'LMDBSUPPLIERORDERLIMIT_MONTH_MODE' => array('value' => 'civil', 'type' => 'chaine'),
+			'LMDBSUPPLIERORDERLIMIT_YEAR_MODE' => array('value' => 'civil', 'type' => 'chaine'),
 			'LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR' => array('value' => 'unlimited', 'type' => 'chaine'),
 		);
 
@@ -162,7 +183,21 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 				continue;
 			}
 
-			dolibarr_set_const($this->db, $constant, $definition['value'], $definition['type'], 0, '', (int) $conf->entity);
+			if (dolibarr_set_const($this->db, $constant, $definition['value'], $definition['type'], 0, '', (int) $conf->entity) <= 0) { throw new RuntimeException('LimitTechnicalError'); }
 		}
+	}
+
+	/** Preserve existing sharing choices, both when enabling and disabling. */
+	private function persistSharing(): void
+	{
+		global $conf;
+		$raw = getDolGlobalString('MULTICOMPANY_EXTERNAL_MODULES_SHARING', '{}');
+		$existing = json_decode($raw === '' ? '{}' : $raw, true);
+		if (!is_array($existing)) { throw new RuntimeException('LimitTechnicalError'); }
+		$definition = ActionsLmdbSupplierOrderLimit::getMulticompanySharingDefinition();
+		$merged = array_replace_recursive($definition, $existing);
+		$merged['lmdbsupplierorderlimit']['sharingelements']['lmdbsupplierorderlimit_limit']['enable'] = $definition['lmdbsupplierorderlimit']['sharingelements']['lmdbsupplierorderlimit_limit']['enable'];
+		$json = json_encode($merged);
+		if ($json === false || dolibarr_set_const($this->db, 'MULTICOMPANY_EXTERNAL_MODULES_SHARING', $json, 'chaine', 0, '', (int) $conf->entity) <= 0) { throw new RuntimeException('LimitTechnicalError'); }
 	}
 }

@@ -54,11 +54,11 @@ if ($buttonRemoveFilter) {
 	$searchDateEnd = lmdbsupplierorderlimitLogsGetPostedDate('search_date_end', true);
 }
 
-if (!isModEnabled('lmdbsupplierorderlimit')) {
+if (!isModEnabled('lmdbsupplierorderlimit') || !empty($user->socid)) {
 	accessforbidden();
 }
 
-if (!lmdbsupplierorderlimitUserCan($user, 'log', 'read')) {
+if (!$user->hasRight('lmdbsupplierorderlimit', 'log', 'read')) {
 	accessforbidden();
 }
 
@@ -188,7 +188,6 @@ foreach ($records as $record) {
 
 print '</table>';
 print '</form>';
-lmdbsupplierorderlimitPrintListLimitAutoSubmitScript('logfilter');
 
 print dol_get_fiche_end();
 

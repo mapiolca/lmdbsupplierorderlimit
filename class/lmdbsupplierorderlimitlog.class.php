@@ -182,13 +182,16 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	 */
 	public function fetch($id)
 	{
-		global $conf;
+		global $conf, $user;
+		if (!$user->hasRight('lmdbsupplierorderlimit', 'log', 'read') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
 
 		$sql = 'SELECT t.rowid, t.entity, t.event_type, t.decision, t.fk_supplier_order, t.fk_user_action,';
 		$sql .= ' t.order_total_ht, t.limit_amount_ht, t.limit_unlimited, t.limit_source, t.fk_limit, t.reason_code, t.origin, t.message, t.date_creation, t.ip, t.user_agent';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
+		$sql .= ' LEFT JOIN '.MAIN_DB_PREFIX.'commande_fournisseur AS cf ON cf.rowid = t.fk_supplier_order';
 		$sql .= ' WHERE t.rowid = '.((int) $id);
 		$sql .= ' AND t.entity = '.((int) $conf->entity);
+		$sql .= $this->buildWhereFromFilters(array());
 
 		$resql = $this->db->query($sql);
 		if (!$resql) {
@@ -217,7 +220,8 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	 */
 	public function fetchAll($limit = 100, $offset = 0, $filters = array(), $sortfield = '', $sortorder = '')
 	{
-		global $conf;
+		global $conf, $user;
+		if (!$user->hasRight('lmdbsupplierorderlimit', 'log', 'read') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
 
 		$records = array();
 		$sql = 'SELECT t.rowid, t.entity, t.event_type, t.decision, t.fk_supplier_order, t.fk_user_action,';
@@ -256,7 +260,8 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	 */
 	public function countAll($filters = array())
 	{
-		global $conf;
+		global $conf, $user;
+		if (!$user->hasRight('lmdbsupplierorderlimit', 'log', 'read') || !empty($user->socid)) { $this->error = 'Access forbidden'; return -1; }
 
 		$sql = 'SELECT COUNT(t.rowid) AS nb';
 		$sql .= ' FROM '.MAIN_DB_PREFIX.$this->table_element.' AS t';
@@ -415,7 +420,17 @@ class LmdbSupplierOrderLimitLog extends CommonObject
 	 */
 	private function buildWhereFromFilters($filters)
 	{
+		global $user;
 		$sql = '';
+		if (!$user->hasRight('fournisseur', 'commande', 'lire')) {
+			$sql .= ' AND t.fk_supplier_order IS NULL';
+		} else {
+			$sql .= ' AND (t.fk_supplier_order IS NULL OR (cf.rowid IS NOT NULL AND cf.entity IN ('.$this->db->sanitize(getEntity('supplier_order')).')';
+			if (!$user->hasRight('societe', 'client', 'voir')) {
+				$sql .= ' AND EXISTS (SELECT sc.fk_soc FROM '.MAIN_DB_PREFIX.'societe_commerciaux sc WHERE sc.fk_soc = cf.fk_soc AND sc.fk_user = '.(int) $user->id.')';
+			}
+			$sql .= '))';
+		}
 
 		if (!empty($filters['fk_user_action'])) {
 			$sql .= ' AND t.fk_user_action = '.((int) $filters['fk_user_action']);

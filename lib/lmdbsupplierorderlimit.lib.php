@@ -14,36 +14,22 @@
  */
 function lmdbsupplierorderlimitAdminPrepareHead()
 {
-	global $langs;
-
+	global $langs, $user;
 	$langs->load('lmdbsupplierorderlimit@lmdbsupplierorderlimit');
-
 	$head = array();
-	$h = 0;
-
-	$head[$h][0] = dol_buildpath('/lmdbsupplierorderlimit/admin/setup.php', 1);
-	$head[$h][1] = $langs->trans('Settings');
-	$head[$h][2] = 'settings';
-	$h++;
-
-	$head[$h][0] = dol_buildpath('/lmdbsupplierorderlimit/admin/limits.php', 1);
-	$head[$h][1] = $langs->trans('LmdbSupplierOrderLimitLimits');
-	$head[$h][2] = 'limits';
-	$h++;
-
-	$head[$h][0] = dol_buildpath('/lmdbsupplierorderlimit/admin/logs.php', 1);
-	$head[$h][1] = $langs->trans('LmdbSupplierOrderLimitLogs');
-	$head[$h][2] = 'logs';
-	$h++;
-
-	$head[$h][0] = dol_buildpath('/lmdbsupplierorderlimit/admin/compatibility.php', 1);
-	$head[$h][1] = $langs->trans('Compatibility');
-	$head[$h][2] = 'compatibility';
-	$h++;
-
-	$head[$h][0] = dol_buildpath('/lmdbsupplierorderlimit/admin/about.php', 1);
-	$head[$h][1] = $langs->trans('About');
-	$head[$h][2] = 'about';
+	if ($user->admin) {
+		$head[] = array(dol_buildpath('/lmdbsupplierorderlimit/admin/setup.php', 1), $langs->trans('Settings'), 'settings');
+	}
+	if ($user->hasRight('lmdbsupplierorderlimit', 'limit', 'read')) {
+		$head[] = array(dol_buildpath('/lmdbsupplierorderlimit/admin/limits.php', 1), $langs->trans('LmdbSupplierOrderLimitLimits'), 'limits');
+	}
+	if ($user->hasRight('lmdbsupplierorderlimit', 'log', 'read')) {
+		$head[] = array(dol_buildpath('/lmdbsupplierorderlimit/admin/logs.php', 1), $langs->trans('LmdbSupplierOrderLimitLogs'), 'logs');
+	}
+	if ($user->admin) {
+		$head[] = array(dol_buildpath('/lmdbsupplierorderlimit/admin/compatibility.php', 1), $langs->trans('Compatibility'), 'compatibility');
+		$head[] = array(dol_buildpath('/lmdbsupplierorderlimit/admin/about.php', 1), $langs->trans('About'), 'about');
+	}
 
 	return $head;
 }
@@ -61,34 +47,24 @@ function lmdbsupplierorderlimitBackToModuleListLink()
 }
 
 /**
- * Submit a native Dolibarr list form when the page-size selector changes.
- *
- * @param string $formId HTML form id
- * @return void
- */
-function lmdbsupplierorderlimitPrintListLimitAutoSubmitScript($formId)
-{
-	print '<script>';
-	print 'jQuery(function($) {';
-	print 'var $form = $("#'.dol_escape_js($formId).'");';
-	print 'if (!$form.length) { return; }';
-	print '$form.find("select.selectlimit, select[name=limit]").off("change.lmdbsupplierorderlimitLimit").on("change.lmdbsupplierorderlimitLimit", function() {';
-	print 'var $page = $form.find("input[name=page]");';
-	print 'if ($page.length) { $page.val("0"); }';
-	print '$form.trigger("submit");';
-	print '});';
-	print '});';
-	print '</script>';
-}
-
-/**
  * Centralized compatibility feature list.
  *
  * @return array<string, array<string, mixed>>
  */
 function lmdbsupplierorderlimitGetCompatibilityFeatures()
 {
+	global $db, $conf;
+	require_once __DIR__.'/../class/lmdbsupplierorderlimitconsumption.class.php';
+	$ready = true;
+	$reason = 'LimitCompatibilityTests';
+	try { (new LmdbSupplierOrderLimitConsumption($db))->assertReady((int) $conf->entity); }
+	catch (Throwable $e) { $ready = false; $reason = $e->getMessage() === 'history_incomplete' ? 'LimitHistoryIncomplete' : 'LimitTechnicalError'; }
 	return array(
+		'periodic_consumption' => array(
+			'label' => 'LimitReconcile', 'description' => 'LimitHistoryHelp',
+			'min_dolibarr' => '20.0.0', 'module_available_from' => '20.0.0', 'min_php' => '8.0.0',
+			'available' => $ready, 'reason' => $reason,
+		),
 		'financial_supplier_order_approval_limit' => array(
 			'label' => 'LmdbSupplierOrderLimitCompatibilityFinancialLimit',
 			'description' => 'LmdbSupplierOrderLimitCompatibilityFinancialLimitDesc',
@@ -123,59 +99,6 @@ function lmdbsupplierorderlimitGetCompatibilityFeatures()
 			'reason' => 'LmdbSupplierOrderLimitRequiresSupplierOrderApproveTrigger',
 		),
 	);
-}
-
-/**
- * Business permission helper with Dolibarr admin elevation.
- *
- * @param User   $user   User object
- * @param string $object Permission object
- * @param string $action Permission action
- * @return bool
- */
-function lmdbsupplierorderlimitUserCan($user, $object, $action)
-{
-	if (!is_object($user)) {
-		return false;
-	}
-
-	if (lmdbsupplierorderlimitUserIsAdministrator($user)) {
-		return true;
-	}
-
-	return $user->hasRight('lmdbsupplierorderlimit', $object, $action);
-}
-
-/**
- * Check if user must receive full module functional rights.
- *
- * Covers Dolibarr administrators, global/super administrators and common
- * Multicompany administrator rights without requiring module granular rights.
- *
- * @param User $user User object
- * @return bool
- */
-function lmdbsupplierorderlimitUserIsAdministrator($user)
-{
-	if (!is_object($user)) {
-		return false;
-	}
-
-	if (!empty($user->admin) || !empty($user->superadmin)) {
-		return true;
-	}
-
-	if (isset($user->entity) && (int) $user->entity === 0 && !empty($user->admin)) {
-		return true;
-	}
-
-	if (method_exists($user, 'hasRight')) {
-		if ($user->hasRight('multicompany', 'admin', 'write') || $user->hasRight('multicompany', 'admin', 'read')) {
-			return true;
-		}
-	}
-
-	return false;
 }
 
 /**

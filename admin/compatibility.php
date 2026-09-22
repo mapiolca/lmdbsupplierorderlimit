@@ -12,11 +12,11 @@ dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
 
 $langs->loadLangs(array('admin', 'lmdbsupplierorderlimit@lmdbsupplierorderlimit'));
 
-if (!isModEnabled('lmdbsupplierorderlimit')) {
+if (!isModEnabled('lmdbsupplierorderlimit') || !empty($user->socid)) {
 	accessforbidden();
 }
 
-if (!lmdbsupplierorderlimitUserCan($user, 'config', 'write')) {
+if (!$user->admin) {
 	accessforbidden();
 }
 
@@ -35,6 +35,8 @@ print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitDetectedPh
 print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitMinDolibarr').'</td><td>20.0.0</td></tr>';
 print '<tr class="oddeven"><td>'.$langs->trans('LmdbSupplierOrderLimitMinPhp').'</td><td>8.0.0</td></tr>';
 print '</table>';
+print '<p>'.$langs->trans('LimitCompatibilityTests').'</p>';
+print '<p>'.$langs->trans('LimitCompatibilitySharing').'</p>';
 
 print '<br>';
 print '<table class="noborder centpercent">';

@@ -13,34 +13,63 @@ if (!defined('CSRFCHECK_WITH_TOKEN')) {
 
 require '../../../main.inc.php';
 require_once DOL_DOCUMENT_ROOT.'/core/lib/admin.lib.php';
+require_once DOL_DOCUMENT_ROOT.'/core/class/html.form.class.php';
 dol_include_once('/lmdbsupplierorderlimit/lib/lmdbsupplierorderlimit.lib.php');
+require_once __DIR__.'/../class/lmdbsupplierorderlimitconsumption.class.php';
 
 $langs->loadLangs(array('admin', 'lmdbsupplierorderlimit@lmdbsupplierorderlimit'));
 
 $action = GETPOST('action', 'aZ09');
 
-if (!isModEnabled('lmdbsupplierorderlimit')) {
+if (!isModEnabled('lmdbsupplierorderlimit') || !empty($user->socid)) {
 	accessforbidden();
 }
 
-if (!lmdbsupplierorderlimitUserCan($user, 'config', 'write')) {
+if (!$user->admin) {
 	accessforbidden();
 }
 
 if ($action === 'save') {
 	$defaultNoLimitBehavior = GETPOST('default_no_limit_behavior', 'alpha');
 	if (!in_array($defaultNoLimitBehavior, array('deny', 'unlimited'), true)) {
-		$defaultNoLimitBehavior = 'unlimited';
+		accessforbidden();
 	}
 
+	$periodModes = array();
+	foreach (array('DAY','MONTH','YEAR') as $period) {
+		$mode = GETPOST('period_'.$period, 'alpha');
+		if (!in_array($mode, array('civil','rolling'), true)) { accessforbidden(); }
+		$periodModes[$period] = $mode;
+	}
+	$db->begin();
 	$result = dolibarr_set_const($db, 'LMDBSUPPLIERORDERLIMIT_DEFAULT_NO_LIMIT_BEHAVIOR', $defaultNoLimitBehavior, 'chaine', 0, '', (int) $conf->entity);
+	foreach ($periodModes as $period => $mode) {
+		if (dolibarr_set_const($db, 'LMDBSUPPLIERORDERLIMIT_'.$period.'_MODE', $mode, 'chaine', 0, '', (int) $conf->entity) <= 0) { $result = -1; }
+	}
 	if ($result > 0) {
+		$db->commit();
 		setEventMessages($langs->trans('SetupSaved'), null, 'mesgs');
 		header('Location: '.$_SERVER['PHP_SELF']);
 		exit;
 	}
 
-	setEventMessages($db->lasterror(), null, 'errors');
+	$db->rollback();
+	setEventMessages($langs->trans('LimitTechnicalError'), null, 'errors');
+}
+
+if ($action === 'reconcile') {
+	$db->begin();
+	try {
+		$ledger = new LmdbSupplierOrderLimitConsumption($db);
+		$ambiguous = $ledger->reconcile((int) $conf->entity);
+		$db->commit();
+		setEventMessages($langs->trans($ambiguous ? 'LimitHistoryIncomplete' : 'RecordSaved'), null, $ambiguous ? 'warnings' : 'mesgs');
+	} catch (Throwable $e) {
+		$db->rollback();
+		setEventMessages($langs->trans('LimitTechnicalError'), null, 'errors');
+	}
+	header('Location: '.$_SERVER['PHP_SELF']);
+	exit;
 }
 
 $token = newToken();
@@ -60,7 +89,6 @@ $switchConstants = array(
 	'LMDBSUPPLIERORDERLIMIT_SHOW_DENIED_MESSAGE' => 'LmdbSupplierOrderLimitShowDeniedMessage',
 	'LMDBSUPPLIERORDERLIMIT_LOG_ALLOWED_APPROVALS' => 'LmdbSupplierOrderLimitLogAllowedApprovals',
 	'LMDBSUPPLIERORDERLIMIT_LOG_DENIED_APPROVALS' => 'LmdbSupplierOrderLimitLogDeniedApprovals',
-	'LMDBSUPPLIERORDERLIMIT_DIRECT_USER_PRIORITY' => 'LmdbSupplierOrderLimitDirectUserPriority',
 );
 
 foreach ($switchConstants as $constant => $labelKey) {
@@ -90,6 +118,12 @@ print '<select class="flat minwidth200" name="default_no_limit_behavior" id="def
 print '<option value="unlimited"'.($defaultNoLimitBehavior === 'unlimited' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitDefaultUnlimited').'</option>';
 print '<option value="deny"'.($defaultNoLimitBehavior === 'deny' ? ' selected' : '').'>'.$langs->trans('LmdbSupplierOrderLimitDefaultDeny').'</option>';
 print '</select> ';
+foreach (array('DAY' => 'LimitTypeDay','MONTH' => 'LimitTypeMonth','YEAR' => 'LimitTypeYear') as $period => $label) {
+	print '<p>'.$langs->trans($label).' ';
+	$mode = getDolGlobalString('LMDBSUPPLIERORDERLIMIT_'.$period.'_MODE', 'civil');
+	print Form::selectarray('period_'.$period, array('civil' => $langs->trans('LimitPeriodCivil'), 'rolling' => $langs->trans('LimitPeriodRolling')), $mode);
+	print ajax_combobox('period_'.$period).'</p>';
+}
 print '<input type="submit" class="button button-save" value="'.$langs->trans('Save').'">';
 print '</form>';
 print ajax_combobox('default_no_limit_behavior');
@@ -97,6 +131,39 @@ print '</td>';
 print '</tr>';
 
 print '</table>';
+print '<p>'.$langs->trans('LimitPriorityHelp').'</p>';
+print '<form method="POST" action="'.$_SERVER['PHP_SELF'].'"><input type="hidden" name="token" value="'.$token.'"><input type="hidden" name="action" value="reconcile">';
+print '<p>'.$langs->trans('LimitHistoryHelp').'</p><button type="submit" class="button">'.$langs->trans('LimitReconcile').'</button></form>';
+
+// Only show ambiguous orders the administrator is also allowed to read as business data.
+if ($user->hasRight('fournisseur', 'commande', 'lire')) {
+	$sql = 'SELECT c.rowid,c.ref,c.entity,c.fk_statut FROM '.MAIN_DB_PREFIX.'lmdbsupplierorderlimit_consumption r';
+	$sql .= ' INNER JOIN '.MAIN_DB_PREFIX.'commande_fournisseur c ON c.rowid = r.fk_supplier_order AND c.entity = r.entity';
+	$sql .= ' WHERE r.entity = '.(int) $conf->entity.' AND r.active = 1 AND r.unresolved = 1';
+	if (!$user->hasRight('societe', 'client', 'voir')) {
+		$sql .= ' AND EXISTS (SELECT sc.fk_soc FROM '.MAIN_DB_PREFIX.'societe_commerciaux sc WHERE sc.fk_soc = c.fk_soc AND sc.fk_user = '.(int) $user->id.')';
+	}
+	$sql .= ' ORDER BY c.rowid'.$db->plimit(50);
+	$result = $db->query($sql);
+	if (!$result) { setEventMessages($langs->trans('LimitTechnicalError'), null, 'errors'); }
+	else {
+		require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.commande.class.php';
+		print '<div class="div-table-responsive-no-min"><table class="noborder centpercent"><tr class="liste_titre"><td>'.$langs->trans('LimitHistoryIncomplete').'</td></tr>';
+		$count = 0;
+		while (is_object($row = $db->fetch_object($result))) {
+			$order = new CommandeFournisseur($db);
+			$order->id = (int) $row->rowid;
+			$order->entity = (int) $row->entity;
+			$order->ref = $row->ref;
+			$order->status = (int) $row->fk_statut;
+			$order->statut = (int) $row->fk_statut;
+			print '<tr class="oddeven"><td>'.$order->getNomUrl(1).'</td></tr>';
+			$count++;
+		}
+		if (!$count) { print '<tr class="oddeven"><td><span class="opacitymedium">'.$langs->trans('NoRecordFound').'</span></td></tr>'; }
+		print '</table></div>';
+	}
+}
 
 print dol_get_fiche_end();
 
