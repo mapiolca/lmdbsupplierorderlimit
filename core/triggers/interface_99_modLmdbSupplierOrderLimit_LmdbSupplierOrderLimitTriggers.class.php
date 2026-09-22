@@ -10,10 +10,18 @@ require_once __DIR__.'/../../class/actions_lmdbsupplierorderlimit.class.php';
 /** Native lifecycle enforcement, inside the native transaction. */
 class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 {
-	/** @var string */ public $family = 'supplier';
-	/** @var string */ public $description = 'Supplier order approval accounting';
-	/** @var string */ public $version = 'development';
-	/** @var string */ public $picto = 'supplier_order';
+/** @var DoliDB */
+	public $db;
+	/** @var string */
+	public $family = 'supplier';
+	/** @var string */
+	public $description = 'Supplier order approval limit triggers';
+	/** @var string */
+	public $version = '1.0.1';
+	/** @var string */
+	public $picto = 'supplier_order';
+	/** @var int|null */
+	private $detectedSupplierOrderStatus;
 
 	/** @param DoliDB $db */
 	public function __construct($db) { $this->db = $db; }
