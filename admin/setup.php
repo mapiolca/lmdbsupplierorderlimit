@@ -58,14 +58,21 @@ if ($action === 'save') {
 }
 
 if ($action === 'reconcile') {
-	$db->begin();
+	$transactionStarted = false;
+	$stage = 'begin';
 	try {
+		if ($db->begin() <= 0) { throw new RuntimeException('transaction_start_failed'); }
+		$transactionStarted = true;
+		$stage = 'reconciliation';
 		$ledger = new LmdbSupplierOrderLimitConsumption($db);
 		$ambiguous = $ledger->reconcile((int) $conf->entity);
-		$db->commit();
+		$stage = 'commit';
+		if ($db->commit() <= 0) { throw new RuntimeException('transaction_commit_failed'); }
+		$transactionStarted = false;
 		setEventMessages($langs->trans($ambiguous ? 'LimitHistoryIncomplete' : 'RecordSaved'), null, $ambiguous ? 'warnings' : 'mesgs');
 	} catch (Throwable $e) {
-		$db->rollback();
+		if ($transactionStarted && !$db->rollback()) { dol_syslog('lmdbsupplierorderlimit reconciliation rollback failed', LOG_ERR); }
+		dol_syslog('lmdbsupplierorderlimit reconciliation failed at '.$stage.' ('.get_class($e).')', LOG_ERR);
 		setEventMessages($langs->trans('LimitTechnicalError'), null, 'errors');
 	}
 	header('Location: '.$_SERVER['PHP_SELF']);

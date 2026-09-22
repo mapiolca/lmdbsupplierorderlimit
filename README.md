@@ -69,11 +69,12 @@ Une désactivation conserve règles, registre, constantes et choix Multicompany.
 
 Socle **déclaré** : Dolibarr 20+, PHP 8.0+, MySQL/MariaDB InnoDB. Langues livrées : français, anglais, allemand, espagnol, italien.
 
-Cette évolution est un développement local non publié. La version du descripteur et l’historique publié restent inchangés. Les sources examinées, contrôles exécutés, limites et scénarios de recette sont consignés dans [doc/validation.md](doc/validation.md).
+Les sources examinées, contrôles exécutés, limites et scénarios de recette des plafonds multiples sont consignés dans [doc/validation.md](doc/validation.md). Le [correctif des transactions avec DebugBar](doc/activation.md) dispose d'un relevé de validation distinct ; son déploiement et son activation sur l'instance restent à confirmer.
 
 ```powershell
 php test/run.php
 php test/native_smoke.php ../dolibarr/htdocs
+php -d extension=mysqli test/native_activation.php ../dolibarr/htdocs
 Get-ChildItem -Recurse -Filter *.php | ForEach-Object { php -l $_.FullName }
 git diff --check
 ```

@@ -125,17 +125,27 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 
 		require_once __DIR__.'/../../class/lmdbsupplierorderlimitmigration.class.php';
 		require_once __DIR__.'/../../class/actions_lmdbsupplierorderlimit.class.php';
+		$transactionStarted = false;
+		$stage = 'schema';
 		try {
 			LmdbSupplierOrderLimitMigration::schema($this->db);
+			$stage = 'defaults';
 			$this->initDefaultConstants();
+			$stage = 'sharing';
 			$this->persistSharing();
-			$this->db->begin();
+			$stage = 'begin';
+			if ($this->db->begin() <= 0) { throw new RuntimeException('transaction_start_failed'); }
+			$transactionStarted = true;
+			$stage = 'reconciliation';
 			$ledger = new LmdbSupplierOrderLimitConsumption($this->db);
 			$ambiguous = $ledger->reconcile((int) $conf->entity);
-			$this->db->commit();
+			$stage = 'commit';
+			if ($this->db->commit() <= 0) { throw new RuntimeException('transaction_commit_failed'); }
+			$transactionStarted = false;
 			if ($ambiguous) { setEventMessages($langs->trans('LimitHistoryIncomplete'), null, 'warnings'); }
 		} catch (Throwable $e) {
-			if (!empty($this->db->transaction_opened)) { $this->db->rollback(); }
+			if ($transactionStarted && !$this->db->rollback()) { dol_syslog(__METHOD__.' rollback failed', LOG_ERR); }
+			dol_syslog(__METHOD__.' failed at '.$stage.' ('.get_class($e).')', LOG_ERR);
 			$this->error = $langs->trans('LimitTechnicalError');
 			return -1;
 		}

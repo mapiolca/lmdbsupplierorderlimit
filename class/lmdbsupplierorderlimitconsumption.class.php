@@ -18,7 +18,13 @@ class LmdbSupplierOrderLimitConsumption
 	 */
 	public function lock(int $entity, array $projects = array()): void
 	{
-		if ($entity <= 0 || empty($this->db->transaction_opened)) {
+		// DebugBar delegates transactions but leaves its inherited counter unset (Dolibarr 20+).
+		// Read the underlying counter only; keep all queries on the original traced connection.
+		$transactionDb = $this->db;
+		while ($transactionDb instanceof TraceableDB) {
+			$transactionDb = $transactionDb->db;
+		}
+		if ($entity <= 0 || empty($transactionDb->transaction_opened)) {
 			throw new RuntimeException('transaction_required');
 		}
 		$keys = array('entity:'.$entity);
