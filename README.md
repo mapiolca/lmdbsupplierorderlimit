@@ -32,6 +32,8 @@ Les deux niveaux d’approbation sont conservés, sans consommation au premier n
 
 Une nouvelle approbation doit passer par `approve()` ou l’endpoint natif d’approbation. Un simple `setStatus()` vers le statut approuvé ne peut pas remplacer ce parcours ni contourner ses deux niveaux.
 
+L’envoi de la commande et sa réception partielle ou complète restent des opérations natives sans nouvelle consommation. Ces transitions ne sont pas bloquées par une reprise d’approbations incomplète ; les contrôles restent actifs pour une nouvelle approbation ou une modification du montant ou du projet. Voir le [diagnostic et la validation du correctif](doc/reception.md).
+
 Les triggers de lignes natives précèdent le recalcul du total de la commande : une commande déjà approuvée doit revenir en brouillon avant modification de ses lignes. Les écritures SQL directes et les appels désactivant volontairement les triggers ne sont pas couverts.
 
 ## Périodes et budget projet

@@ -282,6 +282,35 @@ $tests['non-accounting native events do not acquire locks or consume'] = static 
 	$db->native=(object) array('rowid'=>1,'entity'=>1,'fk_soc'=>5,'fk_projet'=>0,'fk_statut'=>2,'total_ht'=>'40','fk_user_approve'=>null,'fk_user_approve2'=>null,'date_approve'=>null,'date_approve2'=>null);
 	check($trigger->runTrigger('ORDER_SUPPLIER_STATUS_APPROVED',$order,new TestUser(),$langs,$conf)===-1,'setStatus cannot bypass native approval levels');
 };
+$tests['reception and submission preserve accounting despite incomplete approval history'] = static function () {
+	global $langs, $conf;
+	$events = array('ORDER_SUPPLIER_RECEIVE' => 4, 'ORDER_SUPPLIER_STATUS_RECEIVED_PARTIALLY' => 4,
+		'ORDER_SUPPLIER_STATUS_RECEIVED_COMPLETELY' => 5,
+		'ORDER_SUPPLIER_SUBMIT' => 3, 'ORDER_SUPPLIER_STATUS_ORDERED' => 3);
+	foreach (array('missing', 'inactive', 'unresolved', 'resolved') as $history) {
+		foreach ($events as $event => $status) {
+			$db = new TestDb(); $db->ready = 0; $db->unresolved = true;
+			$db->rules = array((object) rule(1, 'day', '0'));
+			$db->native = (object) array('rowid'=>1, 'entity'=>1, 'fk_soc'=>5, 'fk_projet'=>0,
+				'fk_statut'=>$status, 'total_ht'=>'40', 'fk_user_approve'=>null, 'fk_user_approve2'=>null,
+				'date_approve'=>null, 'date_approve2'=>null);
+			if ($history !== 'missing') {
+				$db->entry = (object) array('entity'=>1, 'fk_project'=>0, 'active'=>$history === 'inactive' ? 0 : 1,
+					'snapshot_amount_ht'=>'40', 'fk_user'=>$history === 'unresolved' ? null : 10,
+					'date_approval'=>$history === 'unresolved' ? null : '2026-09-22 12:00:00', 'unresolved'=>$history === 'unresolved' ? 1 : 0);
+			}
+			$before = serialize($db->entry);
+			$trigger = new InterfaceLmdbSupplierOrderLimitTriggers($db);
+			$user = new TestUser(); $user->denied[] = 'fournisseur.commande.approuver';
+			check($trigger->runTrigger($event, new CommandeFournisseur($db), $user, $langs, $conf) === 0, $event.' / '.$history);
+			check(!$db->queries && serialize($db->entry) === $before, 'no accounting read, lock or write');
+			$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($db, new TestUser(), new CommandeFournisseur($db), 1, false, true);
+			check(!$decision['allowed'] && $decision['reason'] === 'history_incomplete', 'periodic approvals still fail closed');
+			$db->native->total_ht = '60';
+			check($trigger->runTrigger('ORDER_SUPPLIER_MODIFY', new CommandeFournisseur($db), new TestUser(), $langs, $conf) === -1, 'financial amendments still blocked');
+		}
+	}
+};
 $tests['rule writes reject inaccessible beneficiaries and administrators without write permission'] = static function () {
 	global $conf;
 	$db=new TestDb(); $rule=new LmdbSupplierOrderLimitLimit($db); $rule->entity=1; $rule->fk_user=10; $rule->amount_ht='50';

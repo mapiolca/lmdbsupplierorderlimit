@@ -38,9 +38,10 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 		$isLine = in_array($action, array('LINEORDER_SUPPLIER_CREATE','LINEORDER_SUPPLIER_INSERT','LINEORDER_SUPPLIER_MODIFY','LINEORDER_SUPPLIER_UPDATE','LINEORDER_SUPPLIER_DELETE'), true);
 		$mutations = array('ORDER_SUPPLIER_CREATE', 'ORDER_SUPPLIER_MODIFY', 'ORDER_SUPPLIER_DELETE',
 			'ORDER_SUPPLIER_VALIDATE', 'ORDER_SUPPLIER_APPROVE', 'ORDER_SUPPLIER_REFUSE', 'ORDER_SUPPLIER_CANCEL',
-			'ORDER_SUPPLIER_SUBMIT', 'ORDER_SUPPLIER_RECEIVE', 'ORDER_SUPPLIER_STATUS_DRAFT', 'ORDER_SUPPLIER_STATUS_VALIDATED',
-			'ORDER_SUPPLIER_STATUS_APPROVED', 'ORDER_SUPPLIER_STATUS_ORDERED', 'ORDER_SUPPLIER_STATUS_RECEIVED_PARTIALLY',
-			'ORDER_SUPPLIER_STATUS_RECEIVED_COMPLETELY', 'ORDER_SUPPLIER_STATUS_CANCELED', 'ORDER_SUPPLIER_STATUS_REFUSED');
+			'ORDER_SUPPLIER_STATUS_DRAFT', 'ORDER_SUPPLIER_STATUS_VALIDATED',
+			'ORDER_SUPPLIER_STATUS_APPROVED', 'ORDER_SUPPLIER_STATUS_CANCELED', 'ORDER_SUPPLIER_STATUS_REFUSED');
+		// Native submission/reception only advance fulfillment; they do not approve or amend the commitment.
+		// Leave their permissions and transaction to core, even when historical accounting is incomplete.
 		if (!isModEnabled('lmdbsupplierorderlimit') || (!$isLine && !in_array($action, $mutations, true))) { return 0; }
 		$langs->load('lmdbsupplierorderlimit@lmdbsupplierorderlimit');
 		try {
