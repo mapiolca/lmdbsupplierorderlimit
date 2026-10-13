@@ -34,7 +34,7 @@ Les deux niveaux d’approbation sont conservés, sans consommation au premier n
 
 Une nouvelle approbation doit passer par `approve()` ou l’endpoint natif d’approbation. Un simple `setStatus()` vers le statut approuvé ne peut pas remplacer ce parcours ni contourner ses deux niveaux.
 
-L’envoi de la commande et sa réception partielle ou complète restent des opérations natives sans nouvelle consommation. Ces transitions ne sont pas bloquées par une reprise d’approbations incomplète ; les contrôles restent actifs pour une nouvelle approbation ou une modification du montant ou du projet. Voir le [diagnostic et la validation du correctif](doc/reception.md).
+La réception partielle ou complète utilise les permissions natives de réception, indépendamment du plafond du réceptionnaire et de ses droits d’approbation, sans nouvelle consommation. Un registre absent ou ambigu ne bloque pas une réception légitime. Les passages directs aux statuts commandé/reçu par `setStatus()` exigent un état précédent déjà approuvé (`2–5`) ; un état absent ou incohérent est refusé. Une annulation ou un « jamais reçu » par le parcours de réception libère la consommation de la commande dans son entité propriétaire. Voir le [diagnostic et la validation du correctif](doc/reception.md).
 
 Les triggers de lignes natives précèdent le recalcul du total de la commande : une commande déjà approuvée doit revenir en brouillon avant modification de ses lignes. Les écritures SQL directes et les appels désactivant volontairement les triggers ne sont pas couverts.
 
@@ -80,6 +80,7 @@ Les sources examinées, contrôles exécutés, limites et scénarios de recette 
 ```powershell
 php test/run.php
 php test/native_smoke.php ../dolibarr/htdocs
+php test/native_fulfillment.php ../dolibarr/htdocs/fourn/class/fournisseur.commande.class.php
 php -d extension=mysqli test/native_activation.php ../dolibarr/htdocs
 Get-ChildItem -Recurse -Filter *.php | ForEach-Object { php -l $_.FullName }
 git diff --check

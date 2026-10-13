@@ -16,9 +16,9 @@ function getDolGlobalString($key, $default = '') { global $conf; return (string)
 function getDolGlobalInt($key, $default = 0) { return (int) getDolGlobalString($key, $default); }
 function getEntity($name) { global $entities; return $entities[$name] ?? '1'; }
 function dol_now() { return strtotime('2026-09-22 12:00:00'); }
-function isModEnabled($name) { global $multicompany; return $name === 'lmdbsupplierorderlimit' || ($name === 'multicompany' && $multicompany); }
+function isModEnabled($name) { global $multicompany, $receptionEnabled; return $name === 'lmdbsupplierorderlimit' || ($name === 'multicompany' && $multicompany) || ($name === 'reception' && $receptionEnabled); }
 function restrictedArea(...$args) { global $access; return $access ? 1 : 0; }
-function dol_syslog($message, $level) {}
+function dol_syslog($message, $level = LOG_INFO) {}
 function dol_include_once($path) {
 	if (strpos($path,'/multicompany/') === 0) { require_once DOL_DOCUMENT_ROOT.$path; }
 	else { require_once dirname(__DIR__).substr($path, strlen('/lmdbsupplierorderlimit')); }
@@ -86,7 +86,8 @@ function rule($id, $type, $amount, $uid = 10, $group = 0, $entity = 1, $unlimite
 	return array('rowid' => $id, 'entity' => $entity, 'fk_user' => $uid, 'fk_usergroup' => $group, 'limit_type' => $type, 'amount_ht' => $amount, 'unlimited' => $unlimited);
 }
 function resetCase() {
-	global $conf, $entities, $access, $langs, $multicompany;
+	global $conf, $entities, $access, $langs, $multicompany, $receptionEnabled;
+	$receptionEnabled = false;
 	$multicompany = false;
 	$conf = (object) array('entity' => 1, 'currency' => 'EUR', 'global' => new stdClass());
 	$entities = array('lmdbsupplierorderlimit_limit' => '1,2,3');
@@ -330,7 +331,8 @@ $tests['reception and submission preserve accounting despite incomplete approval
 			$before = serialize($db->entry);
 			$trigger = new InterfaceLmdbSupplierOrderLimitTriggers($db);
 			$user = new TestUser(); $user->denied[] = 'fournisseur.commande.approuver';
-			check($trigger->runTrigger($event, new CommandeFournisseur($db), $user, $langs, $conf) === 0, $event.' / '.$history);
+			$caller = new CommandeFournisseur($db); $caller->status = 3;
+			check($trigger->runTrigger($event, $caller, $user, $langs, $conf) === 0, $event.' / '.$history);
 			check(!$db->queries && serialize($db->entry) === $before, 'no accounting read, lock or write');
 			$decision = LmdbSupplierOrderLimitAuthorizer::canApproveSupplierOrder($db, new TestUser(), new CommandeFournisseur($db), 1, false, true);
 			check(!$decision['allowed'] && $decision['reason'] === 'history_incomplete', 'periodic approvals still fail closed');
