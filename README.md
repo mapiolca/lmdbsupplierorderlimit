@@ -67,6 +67,8 @@ La migration transforme les règles existantes en **À la commande**, conserve l
 
 À chaque activation, la réconciliation reprend les commandes natives déjà approuvées et les changements intervenus pendant l’arrêt. Elle ne déduit l’approbateur final et la date que lorsque les données natives le permettent. Les cas ambigus bloquent les cumuls périodiques concernés ; les règles à la commande restent utilisables. Les réglages proposent une réconciliation manuelle et affichent jusqu’à 50 commandes ambiguës accessibles. Corriger leur situation par les opérations natives autorisées, puis réconcilier ; aucune date ou attribution historique n’est inventée.
 
+Un total historique inutilisable par le moteur de plafonds est repris comme anomalie avec un instantané inconnu (`NULL`), sans être remplacé par zéro et sans empêcher l’activation. La migration rend cette colonne nullable en conservant les instantanés existants. La commande apparaît dans les anomalies accessibles et les cumuls périodiques restent bloqués jusqu’à résolution ; une nouvelle approbation avec montant inutilisable et une erreur SQL restent refusées.
+
 Une désactivation conserve règles, registre, constantes et choix Multicompany. La réconciliation écrit uniquement dans les tables du module et ne rejoue pas de trigger métier natif.
 
 ## Compatibilité et validation

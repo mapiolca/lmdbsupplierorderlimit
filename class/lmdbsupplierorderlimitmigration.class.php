@@ -26,5 +26,17 @@ class LmdbSupplierOrderLimitMigration
 		foreach (array('uk_lmdbsupplierorderlimit_limit_user_entity','uk_lmdbsupplierorderlimit_limit_group_entity') as $old) {
 			if (isset($indexes[$old]) && !$db->query('ALTER TABLE '.$table.' DROP INDEX '.$old)) { throw new RuntimeException('LimitTechnicalError'); }
 		}
+		// Retain an unusable historical amount as unknown, never as a fabricated zero.
+		$table = MAIN_DB_PREFIX.'lmdbsupplierorderlimit_consumption';
+		$result = $db->query('SHOW COLUMNS FROM '.$table);
+		if (!$result) { throw new RuntimeException('LimitTechnicalError'); }
+		$amountColumn = null;
+		while (is_object($row = $db->fetch_object($result))) {
+			if ($row->Field === 'snapshot_amount_ht') { $amountColumn = $row; }
+		}
+		if (!$amountColumn || !isset($amountColumn->Null)) { throw new RuntimeException('LimitTechnicalError'); }
+		if ($amountColumn->Null !== 'YES' && !$db->query('ALTER TABLE '.$table.' MODIFY snapshot_amount_ht decimal(24,8) NULL')) {
+			throw new RuntimeException('LimitTechnicalError');
+		}
 	}
 }

@@ -46,6 +46,18 @@ Les tests d’activation passent sur 18 combinaisons avec SQL simulé sous PHP 8
 
 Après déploiement de ce diagnostic, retenter l’activation et relever la ligne `failed at ... reason=...` avec les éventuelles erreurs SQL de cette même requête. Ce résultat doit guider le correctif métier ou de déploiement ; ne pas supprimer de commande, inventer un montant ou contourner le refus pour activer le module.
 
+### Cause confirmée et correction de reprise
+
+Le second journal transmis contient, à 12:30:31 selon son horodatage, `modLmdbSupplierOrderLimit::init failed at reconciliation reason=invalid_amount (RuntimeException)`. Il confirme qu’un total historique est rejeté pendant la reprise ; sa valeur exacte et la commande concernée ne sont pas dans le journal. Un montant négatif est un cas reproduit, pas une donnée confirmée de l’instance. Aucun échec SQL associé ni résultat effectif du rollback n’y est observé.
+
+La reprise conserve désormais ces commandes comme anomalies actives avec `snapshot_amount_ht = NULL` et `unresolved = 1`. Les données natives restent intactes, les approbateurs et dates établis sont conservés, aucun montant zéro fictif n’est créé. Le compteur d’anomalies produit l’avertissement natif existant sans empêcher l’activation. Le schéma d’installation et la migration idempotente rendent la colonne nullable, sans effacer les instantanés existants ; une erreur de migration ou d’écriture SQL reste bloquante.
+
+Seule la réconciliation autorise un instantané de montant inconnu. Les approbations et modifications financières courantes conservent le refus des montants inutilisables. Les cumuls périodiques restent bloqués par les anomalies actives ; les budgets projet conservent leur contrôle sur les données natives. Après une correction métier autorisée de la commande, la réconciliation remplace l’anomalie par les données natives désormais utilisables. Une nouvelle activation applique automatiquement la migration ; aucun SQL manuel ni suppression de commande n’est demandé.
+
+Vérification du correctif sous PHP 8.4.22 : 22 scénarios métier passent, avec totaux historiques négatifs, non numériques et absents, zéro valide, correction puis reprise répétée, refus des montants courants invalides et des erreurs SQL. Les 21 combinaisons du test natif d’activation passent sur les classes Dolibarr 24.0.2 du checkout indiqué plus haut, dont un historique à montant inconnu avec zéro, un ou deux enveloppements DebugBar. Ces tests simulent le SQL et les données ; aucune migration MariaDB réelle, validation PHP 8.0, recette de chaque version v20 à v25 ou activation distante n’est affirmée. Le smoke test natif, le lint PHP et le contrôle du diff passent ; PHPStan reste indisponible.
+
+Recette distante restante : déployer ce correctif complet, activer le module et confirmer son état actif malgré l’avertissement de reprise. Dans les réglages, examiner les commandes signalées accessibles et leur total HT, résoudre les anomalies par un parcours natif autorisé puis réconcilier. Vérifier dans deux entités que les anomalies restent rattachées à leur propriétaire, que les cumuls restent bloqués avant résolution et qu’aucune donnée de commande n’a été modifiée par la reprise. Les constats historiques du diagnostic ci-dessus restent conservés.
+
 Le verrou commun est utilisé par l'activation, la réconciliation manuelle et les contrôles définitifs des approbations natives, notamment via fiche ou API. Le parcours HTTP de la page de réglages et l'activation complète ne sont pas exécutés par le nouveau test.
 
 À vérifier sur une instance de test servant le correctif :

@@ -7,7 +7,8 @@ CREATE TABLE IF NOT EXISTS llx_lmdbsupplierorderlimit_consumption
 	fk_user integer NULL,
 	fk_project integer NULL,
 	date_approval datetime NULL,
-	snapshot_amount_ht decimal(24,8) NOT NULL,
+	-- NULL only for unresolved historical amounts; never treated as zero.
+	snapshot_amount_ht decimal(24,8) NULL,
 	active tinyint DEFAULT 1 NOT NULL,
 	unresolved tinyint DEFAULT 0 NOT NULL,
 	UNIQUE KEY uk_lmdbsol_consumption_order (entity, fk_supplier_order),

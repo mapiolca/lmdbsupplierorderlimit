@@ -23,7 +23,7 @@ function dolibarr_set_const($db, $name, $value, $type, $visible, $note, $entity)
 	$conf->global->{$name} = $value;
 	return 1;
 }
-function setEventMessages($message, $messages, $style) {}
+function setEventMessages($message, $messages, $style) { global $notices; $notices[] = array($message, $style); }
 function dol_include_once($path) { require_once dirname(__DIR__).substr($path, strlen('/lmdbsupplierorderlimit')); }
 function ensure($condition, $message) { if (!$condition) { throw new RuntimeException($message); } }
 
@@ -34,6 +34,7 @@ class ActivationTestDb extends DoliDBMysqli
 	public $statements = array();
 	/** @var string */
 	public $fail = '';
+	public $historicalAmount = false;
 	/** @var array{active:int,ready:int} */
 	public $state = array('active' => 1, 'ready' => 0);
 	/** @var array{active:int,ready:int} */
@@ -51,12 +52,17 @@ class ActivationTestDb extends DoliDBMysqli
 		if ($query === 'BEGIN') { $this->snapshot = $this->state; }
 		elseif ($query === 'ROLLBACK') { $this->state = $this->snapshot; }
 		elseif ($query === 'COMMIT') {}
+		elseif (strpos($query, 'SHOW COLUMNS FROM activation_test_lmdbsupplierorderlimit_consumption') === 0) { $rows[] = (object) array('Field'=>'snapshot_amount_ht', 'Null'=>'YES'); }
 		elseif (strpos($query, 'SHOW COLUMNS') === 0) { $rows[] = (object) array('Field' => 'limit_type'); }
 		elseif (strpos($query, 'SHOW INDEX') === 0) {
 			$rows = array((object) array('Key_name' => 'uk_lmdbsol_user_type'), (object) array('Key_name' => 'uk_lmdbsol_group_type'));
 		}
 		elseif (strpos($query, 'SELECT rowid FROM activation_test_lmdbsupplierorderlimit_lock') === 0) { $rows[] = (object) array('rowid' => 1); }
-		elseif (strpos($query, 'SELECT rowid,entity,fk_projet') === 0) {} // No approved orders in this fixture.
+		elseif (strpos($query, 'SELECT rowid,entity,fk_projet') === 0) {
+			if ($this->historicalAmount) { $rows[] = (object) array('rowid'=>1, 'entity'=>2, 'fk_projet'=>0, 'total_ht'=>null, 'fk_user_approve'=>null, 'fk_user_approve2'=>null, 'date_approve'=>null, 'date_approve2'=>null); }
+		}
+		elseif (strpos($query, 'SELECT * FROM activation_test_lmdbsupplierorderlimit_consumption') === 0) {}
+		elseif (strpos($query, 'INSERT INTO activation_test_lmdbsupplierorderlimit_consumption') === 0) {}
 		elseif (strpos($query, 'UPDATE activation_test_lmdbsupplierorderlimit_consumption SET active = 0 WHERE entity = 2') === 0) { $this->state['active'] = 0; }
 		elseif (strpos($query, 'UPDATE activation_test_lmdbsupplierorderlimit_lock SET reconciled = 1 WHERE entity = 2') === 0) { $this->state['ready'] = 1; }
 		elseif (strpos($query, 'INSERT IGNORE INTO activation_test_lmdbsupplierorderlimit_lock') !== 0) { throw new RuntimeException('Unexpected test query'); }
@@ -79,9 +85,10 @@ class ActivationTestLangs
 }
 
 $langs = new ActivationTestLangs();
-foreach (array('', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS', 'private_exception') as $failure) {
+foreach (array('', 'historical_amount', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS', 'private_exception') as $failure) {
 	foreach (array(0, 1, 2) as $wrappers) {
 		$logs = array();
+		$notices = array();
 		$conf = (object) array('entity' => 2, 'global' => (object) array(
 			'LMDBSUPPLIERORDERLIMIT_LOG_ALLOWED_APPROVALS' => '0',
 			'LMDBSUPPLIERORDERLIMIT_SHOW_DENIED_MESSAGE' => '',
@@ -94,13 +101,18 @@ foreach (array('', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS', 'pri
 		try { $ledger->lock(2); throw new LogicException('Missing transaction refusal'); }
 		catch (RuntimeException $e) { ensure($e->getMessage() === 'transaction_required', 'Wrong refusal'); }
 		ensure(!$driver->statements, 'Out-of-transaction lock issued SQL');
-		$driver->fail = $failure;
+		$driver->historicalAmount = $failure === 'historical_amount';
+		$driver->fail = $failure === 'historical_amount' ? '' : $failure;
 		$module = new ActivationTestModule($db);
 		$result = $module->init();
-		if ($failure === '') {
+		if ($failure === '' || $failure === 'historical_amount') {
 			ensure($result === 1 && $module->registered, 'Activation failed with '.$wrappers.' DebugBar wrapper(s)');
 			ensure($driver->state === array('active' => 0, 'ready' => 1), 'Reconciliation not committed');
 			ensure($module->init() === 1, 'Reactivation failed');
+			if ($failure === 'historical_amount') {
+				ensure(in_array(array('LimitHistoryIncomplete', 'warnings'), $notices, true), 'Missing historical warning');
+				ensure((bool) preg_grep('/VALUES \(2,1,NULL,NULL,NULL,NULL,1,1\)/', $driver->statements), 'Unknown amount not preserved');
+			}
 			ensure(getDolGlobalString('LMDBSUPPLIERORDERLIMIT_LOG_ALLOWED_APPROVALS') === '0' && getDolGlobalString('LMDBSUPPLIERORDERLIMIT_SHOW_DENIED_MESSAGE') === '', 'Existing settings lost');
 			$sharing = json_decode(getDolGlobalString('MULTICOMPANY_EXTERNAL_MODULES_SHARING'), true);
 			ensure($sharing['other_module']['keep'] === true, 'Other module sharing lost');

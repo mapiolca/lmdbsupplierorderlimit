@@ -110,17 +110,22 @@ class LmdbSupplierOrderLimitConsumption
 		return $total;
 	}
 
-	/** @param stdClass $order Native SQL row; snapshot is intentionally updated on authorized amendments. */
-	public function record(stdClass $order, ?int $userId, ?int $date): void
+	/** @param stdClass $order Native SQL row; snapshot is intentionally updated on authorized amendments.
+	 * @param bool $historical Only reconciliation may retain an unusable amount as NULL/unresolved.
+	 * @return bool Whether both amount and approval attribution are resolved.
+	 */
+	public function record(stdClass $order, ?int $userId, ?int $date, bool $historical = false): bool
 	{
 		$amount = LmdbSupplierOrderLimitPolicy::amount($order->total_ht);
-		if ($amount === null) { throw new RuntimeException('invalid_amount'); }
-		$unresolved = $userId === null || $date === null ? 1 : 0;
+		if ($amount === null && !$historical) { throw new RuntimeException('invalid_amount'); }
+		$unresolved = $amount === null || $userId === null || $date === null ? 1 : 0;
 		$sql = 'INSERT INTO '.MAIN_DB_PREFIX.'lmdbsupplierorderlimit_consumption (entity,fk_supplier_order,fk_user,fk_project,date_approval,snapshot_amount_ht,active,unresolved) VALUES (';
 		$sql .= (int) $order->entity.','.(int) $order->rowid.','.($userId ?? 'NULL').','.((int) $order->fk_projet ?: 'NULL').',';
-		$sql .= ($date === null ? 'NULL' : "'".$this->db->idate($date)."'").",'".$this->db->escape($amount)."',1,".$unresolved.')';
+		$sql .= ($date === null ? 'NULL' : "'".$this->db->idate($date)."'").',';
+		$sql .= ($amount === null ? 'NULL' : "'".$this->db->escape($amount)."'").',1,'.$unresolved.')';
 		$sql .= ' ON DUPLICATE KEY UPDATE fk_user=VALUES(fk_user),fk_project=VALUES(fk_project),date_approval=VALUES(date_approval),snapshot_amount_ht=VALUES(snapshot_amount_ht),active=1,unresolved=VALUES(unresolved)';
 		if (!$this->db->query($sql)) { throw new RuntimeException('technical_error'); }
+		return !$unresolved;
 	}
 
 	public function release(int $entity, int $id): void
@@ -170,8 +175,7 @@ class LmdbSupplierOrderLimitConsumption
 				&& in_array((int) $previous->fk_user, array((int) $row->fk_user_approve, (int) $row->fk_user_approve2), true)) {
 				$attribution = array('user' => (int) $previous->fk_user, 'date' => (int) $this->db->jdate($previous->date_approval));
 			}
-			$this->record($row, $attribution['user'], $attribution['date']);
-			if ($attribution['user'] === null) { $ambiguous++; }
+			if (!$this->record($row, $attribution['user'], $attribution['date'], true)) { $ambiguous++; }
 		}
 		if (!$this->db->query("UPDATE ".MAIN_DB_PREFIX."lmdbsupplierorderlimit_lock SET reconciled = 1 WHERE entity = ".$entity." AND scope_key = 'entity:".$entity."'")) { throw new RuntimeException('technical_error'); }
 		return $ambiguous;

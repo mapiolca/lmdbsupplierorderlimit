@@ -47,6 +47,7 @@ class TestDb
 	public $targetAccessible = true;
 	public $fail = '';
 	public $columns = array();
+	public $amountNullable = false;
 	public $indexes = array('uk_lmdbsupplierorderlimit_limit_user_entity','uk_lmdbsupplierorderlimit_limit_group_entity');
 	public function escape($s) { return str_replace("'", "''", $s); }
 	public function sanitize($s) { return $s; }
@@ -68,9 +69,11 @@ class TestDb
 		elseif (strpos($sql, 'SELECT rowid, entity, fk_soc') === 0) { $rows = $this->native ? array($this->native) : array(); }
 		elseif (strpos($sql, 'SELECT rowid,entity,fk_projet') === 0) { $rows = $this->native ? array($this->native) : array(); }
 		elseif (strpos($sql, 'SELECT rowid FROM test_prefix_lmdbsupplierorderlimit_lock') === 0) { $rows = array((object) array('rowid' => 1)); }
+		elseif (strpos($sql, 'SHOW COLUMNS FROM test_prefix_lmdbsupplierorderlimit_consumption') === 0) { $rows = array((object) array('Field'=>'snapshot_amount_ht', 'Null'=>$this->amountNullable ? 'YES' : 'NO')); }
 		elseif (strpos($sql, 'SHOW COLUMNS') === 0) { $rows = array_map(static function ($v) { return (object) array('Field' => $v); }, $this->columns); }
 		elseif (strpos($sql, 'SHOW INDEX') === 0) { $rows = array_map(static function ($v) { return (object) array('Key_name' => $v); }, $this->indexes); }
 		elseif (preg_match('/ ADD limit_type /', $sql)) { $this->columns[] = 'limit_type'; }
+		elseif (strpos($sql, ' MODIFY snapshot_amount_ht ') !== false) { $this->amountNullable = true; }
 		elseif (preg_match('/ ADD UNIQUE KEY ([a-z_]+)/', $sql, $m)) { $this->indexes[] = $m[1]; }
 		elseif (preg_match('/ DROP INDEX ([a-z_]+)/', $sql, $m)) { $this->indexes = array_values(array_diff($this->indexes, array($m[1]))); }
 		elseif (!preg_match('/^(INSERT IGNORE|INSERT INTO|UPDATE)/', $sql)) { throw new RuntimeException('Unexpected SQL: '.$sql); }
@@ -206,7 +209,8 @@ $tests['double approval consumes only final approval and preserves actor'] = sta
 };
 $tests['migration repeatable and old identifiers preserved'] = static function () {
 	$db=new TestDb(); LmdbSupplierOrderLimitMigration::schema($db); $count=count($db->queries); LmdbSupplierOrderLimitMigration::schema($db);
-	check(count($db->queries)===$count+2,'idempotent DDL'); check(in_array('uk_lmdbsol_user_type',$db->indexes,true),'new uniqueness');
+	check(count($db->queries)===$count+3 && !preg_grep('/^ALTER /', array_slice($db->queries, $count)), 'idempotent DDL'); check(in_array('uk_lmdbsol_user_type',$db->indexes,true),'new uniqueness');
+	check($db->amountNullable, 'historical NULL amount migration applied');
 	check(!preg_grep('/^(DELETE|UPDATE) /',$db->queries),'no rewriting existing rules');
 };
 $tests['owner configuration and transverse/global group scope without switching session'] = static function () {
@@ -270,15 +274,28 @@ $tests['reconciliation retains ambiguity and releases inactive history without n
 	check((bool) preg_grep('/SET active = 0 WHERE entity = 1$/',$db->queries),'old consumption released');
 	check(!preg_grep('/^(INSERT|UPDATE|DELETE).*test_prefix_commande_fournisseur/',$db->queries),'native data never rewritten');
 };
-$tests['historical reconciliation rejects invalid totals without inventing consumption'] = static function () {
+$tests['historical invalid totals remain unresolved without blocking reconciliation'] = static function () {
 	foreach (array('-40', 'invalid', null) as $amount) {
 		$db = new TestDb(); $ledger = new LmdbSupplierOrderLimitConsumption($db);
 		$db->native = (object) array('rowid'=>1, 'entity'=>1, 'fk_projet'=>0, 'total_ht'=>$amount,
 			'fk_user_approve'=>null, 'fk_user_approve2'=>null, 'date_approve'=>null, 'date_approve2'=>null);
-		try { $ledger->reconcile(1); throw new LogicException('Invalid historical total accepted'); }
-		catch (RuntimeException $e) { check($e->getMessage() === 'invalid_amount', 'precise historical refusal'); }
-		check(!preg_grep('/^INSERT INTO .*consumption/', $db->queries), 'no invented consumption');
-		check(!preg_grep('/SET reconciled = 1/', $db->queries), 'failed history not marked ready');
+		check($ledger->reconcile(1) === 1, 'historical amount reported unresolved');
+		check((bool) preg_grep('/VALUES \(1,1,NULL,NULL,NULL,NULL,1,1\)/', $db->queries), 'unknown amount stored as NULL, never zero');
+		check((bool) preg_grep('/SET reconciled = 1/', $db->queries), 'reconciliation completed with anomaly');
+		$db->unresolved = true;
+		try { $ledger->assertReady(1); throw new LogicException('Unresolved history allowed periodic controls'); }
+		catch (RuntimeException $e) { check($e->getMessage() === 'history_incomplete', 'periodic guard retained'); }
+		try { $ledger->record($db->native, 10, dol_now()); throw new LogicException('Invalid live approval accepted'); }
+		catch (RuntimeException $e) { check($e->getMessage() === 'invalid_amount', 'live approval still refused'); }
+		$db->native->total_ht = '0'; $db->queries = array();
+		check($ledger->reconcile(1) === 1, 'zero valid, attribution still unresolved');
+		check((bool) preg_grep("/NULL,'0\\.00000000',1,1/", $db->queries), 'explicit zero preserved');
+		$db->native->fk_user_approve = 10; $db->native->date_approve = '2026-09-22 12:00:00';
+		check($ledger->reconcile(1) === 0, 'corrected native history resolves anomaly');
+		check($ledger->reconcile(1) === 0, 'corrected reconciliation repeatable');
+		$db->fail = 'INSERT INTO';
+		try { $ledger->reconcile(1); throw new LogicException('Historical SQL failure ignored'); }
+		catch (RuntimeException $e) { check($e->getMessage() === 'technical_error', 'SQL failures remain blocking'); }
 	}
 };
 $tests['non-accounting native events do not acquire locks or consume'] = static function () {
