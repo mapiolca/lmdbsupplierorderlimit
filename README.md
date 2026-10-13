@@ -1,5 +1,7 @@
 # lmdbsupplierorderlimit
 
+Version courante : **1.0.2**. Consulter [ChangeLog.md](ChangeLog.md) pour les changements et les actions de mise à jour.
+
 Module externe Dolibarr contrôlant les plafonds d’approbation HT des commandes fournisseurs natives. Le dépôt est la racine du module, à installer dans une racine de modules externes configurée dans Dolibarr.
 
 ## Plafonds et priorité

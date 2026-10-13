@@ -8,7 +8,7 @@ La cause est reproduite localement avec un registre absent. L’état réel du r
 
 Le correctif retire du traitement comptable les événements natifs d’envoi et de réception : `ORDER_SUPPLIER_SUBMIT`, `ORDER_SUPPLIER_RECEIVE`, `ORDER_SUPPLIER_STATUS_ORDERED`, `ORDER_SUPPLIER_STATUS_RECEIVED_PARTIALLY` et `ORDER_SUPPLIER_STATUS_RECEIVED_COMPLETELY`. Ces opérations ne changent ni le montant HT, ni le projet, ni l’approbateur final. Le module retourne son résultat neutre sans lire ni écrire son registre ; les permissions, la validation du statut et la transaction restent à la charge du parcours natif.
 
-Les approbations, modifications financières, lignes, annulations, refus, suppressions et retours en brouillon conservent leurs contrôles. Une attribution historique manquante n’est pas inventée et continue à bloquer les cumuls périodiques lors d’une approbation. La réconciliation reste une opération distincte. Aucun changement SQL, migration, réglage, droit, document, Agenda, notification, API ou cron n’est ajouté. Il ne s’agit pas d’une release ; la version et le changelog publié restent inchangés.
+Les approbations, modifications financières, lignes, annulations, refus, suppressions et retours en brouillon conservent leurs contrôles. Une attribution historique manquante n’est pas inventée et continue à bloquer les cumuls périodiques lors d’une approbation. La réconciliation reste une opération distincte. Ce correctif n’ajoute aucun changement SQL, migration, réglage, droit, document, Agenda, notification, API ou cron. Il est intégré à la version **1.0.2** du 13 octobre 2026 et résumé dans `ChangeLog.md` ; son déploiement reste à confirmer.
 
 ## Contrats natifs lus
 

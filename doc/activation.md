@@ -1,6 +1,6 @@
 # Activation et transactions avec DebugBar — 2026-09-22
 
-Correctif préparé à partir de `main` au commit `13740189e3d56dff6020583b1d57e2fecb6b1385`. Le module conserve sa version déclarée `1.0.1`, son identifiant `450025` et ses permissions. Ce travail ne constitue pas une release et ne modifie pas l'historique publié de `ChangeLog.md`.
+Correctif préparé à partir de `main` au commit `13740189e3d56dff6020583b1d57e2fecb6b1385`, puis intégré à la version **1.0.2** du 13 octobre 2026 et résumé dans `ChangeLog.md`. L’identifiant `450025` et les permissions sont conservés. Les preuves ci-dessous restent celles du correctif d’activation ; le passage de version ne confirme pas son déploiement sur l’instance.
 
 ## Diagnostic et correction
 

@@ -31,7 +31,7 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 		$this->name = preg_replace('/^mod/i', '', get_class($this));
 		$this->description = 'LmdbSupplierOrderLimitDescription';
 		$this->descriptionlong = 'LmdbSupplierOrderLimitDescription';
-		$this->version = '1.0.1';
+		$this->version = '1.0.2';
 		$this->const_name = 'MAIN_MODULE_'.strtoupper($this->rights_class);
 		$this->picto = 'supplier_order';
 		$this->editor_name = 'Les Métiers du Bâtiment';

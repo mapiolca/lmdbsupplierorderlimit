@@ -17,7 +17,7 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 	/** @var string */
 	public $description = 'Supplier order approval limit triggers';
 	/** @var string */
-	public $version = '1.0.1';
+	public $version = '1.0.2';
 	/** @var string */
 	public $picto = 'supplier_order';
 	/** @var int|null */
