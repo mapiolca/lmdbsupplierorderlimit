@@ -45,6 +45,7 @@ class ActivationTestDb extends DoliDBMysqli
 	public function lasterrno() { return 'TEST'; }
 	public function query($query, $usesavepoint = 0, $type = 'auto', $result_mode = 0) {
 		$this->statements[] = $query;
+		if ($this->fail === 'private_exception') { throw new RuntimeException('private customer SQL token=secret'); }
 		if ($this->fail !== '' && strpos($query, $this->fail) !== false) { return false; }
 		$rows = array();
 		if ($query === 'BEGIN') { $this->snapshot = $this->state; }
@@ -78,7 +79,7 @@ class ActivationTestLangs
 }
 
 $langs = new ActivationTestLangs();
-foreach (array('', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS') as $failure) {
+foreach (array('', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS', 'private_exception') as $failure) {
 	foreach (array(0, 1, 2) as $wrappers) {
 		$logs = array();
 		$conf = (object) array('entity' => 2, 'global' => (object) array(
@@ -117,6 +118,10 @@ foreach (array('', 'BEGIN', 'SET reconciled = 1', 'COMMIT', 'SHOW COLUMNS') as $
 			$needsRollback = in_array($failure, array('SET reconciled = 1', 'COMMIT'), true);
 			ensure(in_array('ROLLBACK', $driver->statements, true) === $needsRollback, 'Incorrect rollback ownership');
 			ensure((bool) preg_grep('/modLmdbSupplierOrderLimit::init.*failed/', $logs), 'Missing activation diagnostic');
+			$expectedReasons = array('BEGIN'=>'transaction_start_failed', 'SET reconciled = 1'=>'technical_error',
+				'COMMIT'=>'transaction_commit_failed', 'SHOW COLUMNS'=>'LimitTechnicalError', 'private_exception'=>'unexpected_error');
+			ensure((bool) preg_grep('/reason='.$expectedReasons[$failure].' /', $logs), 'Missing safe failure reason');
+			ensure(strpos(implode("\n", $logs), 'private customer') === false && strpos(implode("\n", $logs), 'token=') === false, 'Private exception leaked');
 		}
 		ensure($driver->transaction_opened === 0, 'Transaction leaked');
 		echo 'OK wrappers='.$wrappers.' failure='.($failure ?: 'none')."\n";

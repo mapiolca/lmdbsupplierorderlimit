@@ -145,7 +145,10 @@ class modLmdbSupplierOrderLimit extends DolibarrModules
 			if ($ambiguous) { setEventMessages($langs->trans('LimitHistoryIncomplete'), null, 'warnings'); }
 		} catch (Throwable $e) {
 			if ($transactionStarted && !$this->db->rollback()) { dol_syslog(__METHOD__.' rollback failed', LOG_ERR); }
-			dol_syslog(__METHOD__.' failed at '.$stage.' ('.get_class($e).')', LOG_ERR);
+			// Never log arbitrary exception text: it may contain SQL, customer data or secrets.
+			$reason = in_array($e->getMessage(), array('LimitTechnicalError', 'technical_error', 'invalid_amount', 'transaction_required', 'transaction_start_failed', 'transaction_commit_failed'), true)
+				? $e->getMessage() : 'unexpected_error';
+			dol_syslog(__METHOD__.' failed at '.$stage.' reason='.$reason.' ('.get_class($e).')', LOG_ERR);
 			$this->error = $langs->trans('LimitTechnicalError');
 			return -1;
 		}

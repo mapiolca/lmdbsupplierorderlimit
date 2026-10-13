@@ -36,6 +36,16 @@ Autres contrôles : les 20 scénarios métier de `test/run.php`, le test `test/n
 
 ## Portée et recette restante
 
+### Incident du 13 octobre 2026 et diagnostic complémentaire
+
+Le journal transmis après le passage en 1.0.2 contient, à 12:13:42 selon l’horodatage du fichier, une tentative `GET /admin/modules.php` avec `action=set`, suivie de `modLmdbSupplierOrderLimit::init failed at reconciliation (RuntimeException)` puis du retour à la liste des modules. Aucune erreur SQL n’est associée à cette séquence. Le fuseau du journal, le SHA des fichiers déployés et le résultat effectif du rollback ne sont pas confirmés. Les erreurs SQL d’autres modules concernent d’autres requêtes ; elles ne démontrent pas la cause de cette activation.
+
+Ce journal confirme l’étape de réconciliation, sans fournir la raison exacte. Le diagnostic complémentaire ajoute `reason=` avec une liste fermée : erreur technique, montant invalide, absence de transaction ou échec de début/commit. Toute autre exception devient `unexpected_error` ; son texte brut n’est jamais enregistré. Le même principe est appliqué à la réconciliation manuelle. Les refus, transactions et données métier restent inchangés : ce patch n’est pas présenté comme une résolution de l’incident.
+
+Les tests d’activation passent sur 18 combinaisons avec SQL simulé sous PHP 8.4.22 et les classes natives du checkout Dolibarr 24.0.2 `b9604c05e163fdea99508249fc6aef98007eec81`. Ils vérifient les codes connus, le masquage d’une exception contenant une donnée privée, l’absence d’activation après échec et la restitution transactionnelle simulée. Les 22 scénarios de `test/run.php` incluent des historiques ambigus et des totaux négatifs, non numériques ou absents : ces derniers reproduisent un refus `invalid_amount`, sans prouver qu’ils existent sur l’instance. Aucun journal brut ni donnée de l’instance n’est incorporé au dépôt.
+
+Après déploiement de ce diagnostic, retenter l’activation et relever la ligne `failed at ... reason=...` avec les éventuelles erreurs SQL de cette même requête. Ce résultat doit guider le correctif métier ou de déploiement ; ne pas supprimer de commande, inventer un montant ou contourner le refus pour activer le module.
+
 Le verrou commun est utilisé par l'activation, la réconciliation manuelle et les contrôles définitifs des approbations natives, notamment via fiche ou API. Le parcours HTTP de la page de réglages et l'activation complète ne sont pas exécutés par le nouveau test.
 
 À vérifier sur une instance de test servant le correctif :

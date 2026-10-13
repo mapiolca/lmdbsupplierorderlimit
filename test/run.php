@@ -270,6 +270,17 @@ $tests['reconciliation retains ambiguity and releases inactive history without n
 	check((bool) preg_grep('/SET active = 0 WHERE entity = 1$/',$db->queries),'old consumption released');
 	check(!preg_grep('/^(INSERT|UPDATE|DELETE).*test_prefix_commande_fournisseur/',$db->queries),'native data never rewritten');
 };
+$tests['historical reconciliation rejects invalid totals without inventing consumption'] = static function () {
+	foreach (array('-40', 'invalid', null) as $amount) {
+		$db = new TestDb(); $ledger = new LmdbSupplierOrderLimitConsumption($db);
+		$db->native = (object) array('rowid'=>1, 'entity'=>1, 'fk_projet'=>0, 'total_ht'=>$amount,
+			'fk_user_approve'=>null, 'fk_user_approve2'=>null, 'date_approve'=>null, 'date_approve2'=>null);
+		try { $ledger->reconcile(1); throw new LogicException('Invalid historical total accepted'); }
+		catch (RuntimeException $e) { check($e->getMessage() === 'invalid_amount', 'precise historical refusal'); }
+		check(!preg_grep('/^INSERT INTO .*consumption/', $db->queries), 'no invented consumption');
+		check(!preg_grep('/SET reconciled = 1/', $db->queries), 'failed history not marked ready');
+	}
+};
 $tests['non-accounting native events do not acquire locks or consume'] = static function () {
 	global $langs,$conf;
 	$db=new TestDb(); $db->transaction_opened=0;
