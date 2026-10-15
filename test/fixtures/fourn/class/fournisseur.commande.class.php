@@ -4,6 +4,7 @@ class CommandeFournisseur
 	public $db;
 	public $id = 1;
 	public $entity = 1;
+	public $status = 0;
 	public $element = 'order_supplier';
 	public $total_ht = '40';
 	public $fk_project = 0;
@@ -16,6 +17,7 @@ class CommandeFournisseur
 		if (!$this->db->native) { return 0; }
 		$this->id = $id;
 		$this->entity = (int) $this->db->native->entity;
+		$this->status = (int) $this->db->native->fk_statut;
 		$this->total_ht = $this->db->native->total_ht;
 		$this->fk_project = (int) $this->db->native->fk_projet;
 		return 1;

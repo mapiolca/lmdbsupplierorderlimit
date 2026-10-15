@@ -1,5 +1,13 @@
 # ChangeLog
 
+## 1.0.2 - 2026-10-13
+
+- Ajout des plafonds HT par commande, jour, mois, année et budget projet natif, avec périodes civiles ou glissantes et priorité des règles individuelles sur les règles de groupe.
+- Suivi transactionnel des consommations attribuées à l’approbateur final, conservation des deux niveaux d’approbation natifs, contrôle des modifications financières et respect des droits et du périmètre Multicompany sans exemption administrateur.
+- Migration idempotente des anciennes règles vers la nature « À la commande » et reprise des approbations existantes sans inventer leur attribution ; les totaux historiques inutilisables sont conservés comme inconnus (`NULL`) dans le registre et signalés comme anomalies, sans empêcher l’activation. La migration conserve les instantanés existants. Après mise à jour, réactiver le module, examiner les anomalies accessibles dans les réglages et réconcilier ; les historiques incomplets bloquent les contrôles périodiques.
+- Correction de l’activation et des contrôles transactionnels lorsque DebugBar trace la connexion, avec conservation des réglages et des partages existants ; diagnostic des refus d’activation et de réconciliation par étape et code technique, sans divulguer les exceptions brutes.
+- Correction des réceptions bloquées par un historique d’approbation incomplet, sans contrôler le plafond du réceptionnaire ni créer de consommation ; refus des passages directs aux statuts commandé/reçu sans état préalable déjà approuvé et libération de la consommation lors d’une annulation ou d’un « jamais reçu » depuis la réception. Socle PHP 8.0 et cible Dolibarr v20 à v25 conservés ; les preuves et limites de validation sont détaillées dans `doc/validation.md`, `doc/activation.md` et `doc/reception.md`.
+
 ## 1.0.1 - 2026-08-25
 
 - Suppression de l'initialisation dynamique obsolète de la propriété de menus sous PHP 8.2.

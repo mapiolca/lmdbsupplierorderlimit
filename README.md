@@ -1,5 +1,7 @@
 # lmdbsupplierorderlimit
 
+Version courante : **1.0.2**. Consulter [ChangeLog.md](ChangeLog.md) pour les changements et les actions de mise à jour.
+
 Module externe Dolibarr contrôlant les plafonds d’approbation HT des commandes fournisseurs natives. Le dépôt est la racine du module, à installer dans une racine de modules externes configurée dans Dolibarr.
 
 ## Plafonds et priorité
@@ -32,6 +34,8 @@ Les deux niveaux d’approbation sont conservés, sans consommation au premier n
 
 Une nouvelle approbation doit passer par `approve()` ou l’endpoint natif d’approbation. Un simple `setStatus()` vers le statut approuvé ne peut pas remplacer ce parcours ni contourner ses deux niveaux.
 
+La réception partielle ou complète utilise les permissions natives de réception, indépendamment du plafond du réceptionnaire et de ses droits d’approbation, sans nouvelle consommation. Un registre absent ou ambigu ne bloque pas une réception légitime. Les passages directs aux statuts commandé/reçu par `setStatus()` exigent un état précédent déjà approuvé (`2–5`) ; un état absent ou incohérent est refusé. Une annulation ou un « jamais reçu » par le parcours de réception libère la consommation de la commande dans son entité propriétaire. Voir le [diagnostic et la validation du correctif](doc/reception.md).
+
 Les triggers de lignes natives précèdent le recalcul du total de la commande : une commande déjà approuvée doit revenir en brouillon avant modification de ses lignes. Les écritures SQL directes et les appels désactivant volontairement les triggers ne sont pas couverts.
 
 ## Périodes et budget projet
@@ -63,6 +67,8 @@ La migration transforme les règles existantes en **À la commande**, conserve l
 
 À chaque activation, la réconciliation reprend les commandes natives déjà approuvées et les changements intervenus pendant l’arrêt. Elle ne déduit l’approbateur final et la date que lorsque les données natives le permettent. Les cas ambigus bloquent les cumuls périodiques concernés ; les règles à la commande restent utilisables. Les réglages proposent une réconciliation manuelle et affichent jusqu’à 50 commandes ambiguës accessibles. Corriger leur situation par les opérations natives autorisées, puis réconcilier ; aucune date ou attribution historique n’est inventée.
 
+Un total historique inutilisable par le moteur de plafonds est repris comme anomalie avec un instantané inconnu (`NULL`), sans être remplacé par zéro et sans empêcher l’activation. La migration rend cette colonne nullable en conservant les instantanés existants. La commande apparaît dans les anomalies accessibles et les cumuls périodiques restent bloqués jusqu’à résolution ; une nouvelle approbation avec montant inutilisable et une erreur SQL restent refusées.
+
 Une désactivation conserve règles, registre, constantes et choix Multicompany. La réconciliation écrit uniquement dans les tables du module et ne rejoue pas de trigger métier natif.
 
 ## Compatibilité et validation
@@ -74,6 +80,7 @@ Les sources examinées, contrôles exécutés, limites et scénarios de recette 
 ```powershell
 php test/run.php
 php test/native_smoke.php ../dolibarr/htdocs
+php test/native_fulfillment.php ../dolibarr/htdocs/fourn/class/fournisseur.commande.class.php
 php -d extension=mysqli test/native_activation.php ../dolibarr/htdocs
 Get-ChildItem -Recurse -Filter *.php | ForEach-Object { php -l $_.FullName }
 git diff --check

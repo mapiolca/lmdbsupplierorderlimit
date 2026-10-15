@@ -17,7 +17,7 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 	/** @var string */
 	public $description = 'Supplier order approval limit triggers';
 	/** @var string */
-	public $version = '1.0.1';
+	public $version = '1.0.2';
 	/** @var string */
 	public $picto = 'supplier_order';
 	/** @var int|null */
@@ -36,15 +36,24 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 	public function runTrigger($action, $object, $user, $langs, $conf)
 	{
 		$isLine = in_array($action, array('LINEORDER_SUPPLIER_CREATE','LINEORDER_SUPPLIER_INSERT','LINEORDER_SUPPLIER_MODIFY','LINEORDER_SUPPLIER_UPDATE','LINEORDER_SUPPLIER_DELETE'), true);
+		$statusTransitions = array('ORDER_SUPPLIER_STATUS_ORDERED'=>3, 'ORDER_SUPPLIER_STATUS_RECEIVED_PARTIALLY'=>4, 'ORDER_SUPPLIER_STATUS_RECEIVED_COMPLETELY'=>5);
+		$isFulfillment = $action === 'ORDER_SUPPLIER_RECEIVE' || isset($statusTransitions[$action]);
 		$mutations = array('ORDER_SUPPLIER_CREATE', 'ORDER_SUPPLIER_MODIFY', 'ORDER_SUPPLIER_DELETE',
 			'ORDER_SUPPLIER_VALIDATE', 'ORDER_SUPPLIER_APPROVE', 'ORDER_SUPPLIER_REFUSE', 'ORDER_SUPPLIER_CANCEL',
-			'ORDER_SUPPLIER_SUBMIT', 'ORDER_SUPPLIER_RECEIVE', 'ORDER_SUPPLIER_STATUS_DRAFT', 'ORDER_SUPPLIER_STATUS_VALIDATED',
-			'ORDER_SUPPLIER_STATUS_APPROVED', 'ORDER_SUPPLIER_STATUS_ORDERED', 'ORDER_SUPPLIER_STATUS_RECEIVED_PARTIALLY',
-			'ORDER_SUPPLIER_STATUS_RECEIVED_COMPLETELY', 'ORDER_SUPPLIER_STATUS_CANCELED', 'ORDER_SUPPLIER_STATUS_REFUSED');
-		if (!isModEnabled('lmdbsupplierorderlimit') || (!$isLine && !in_array($action, $mutations, true))) { return 0; }
+			'ORDER_SUPPLIER_STATUS_DRAFT', 'ORDER_SUPPLIER_STATUS_VALIDATED',
+			'ORDER_SUPPLIER_STATUS_APPROVED', 'ORDER_SUPPLIER_STATUS_CANCELED', 'ORDER_SUPPLIER_STATUS_REFUSED');
+		if (!isModEnabled('lmdbsupplierorderlimit') || (!$isLine && !$isFulfillment && !in_array($action, $mutations, true))) { return 0; }
 		$langs->load('lmdbsupplierorderlimit@lmdbsupplierorderlimit');
 		try {
 			require_once DOL_DOCUMENT_ROOT.'/fourn/class/fournisseur.commande.class.php';
+			if (isset($statusTransitions[$action])) {
+				// setStatus() passes the previous object state; fetch() below sees the new SQL state.
+				$beforeStatus = $object->status ?? $object->statut ?? null;
+				if (!$object instanceof CommandeFournisseur || !in_array($beforeStatus, array(2,3,4,5,'2','3','4','5'), true)
+					|| (isset($object->status, $object->statut) && (string) $object->status !== (string) $object->statut)) {
+					throw new RuntimeException('native_approval_required');
+				}
+			}
 			$id = $isLine ? (int) ($object->fk_commande ?? 0) : (int) $object->id;
 			$order = new CommandeFournisseur($this->db);
 			if ($order->fetch($id) <= 0) {
@@ -53,6 +62,21 @@ class InterfaceLmdbSupplierOrderLimitTriggers extends DolibarrTriggers
 			}
 			$entity = (int) $order->entity;
 			if ($entity <= 0 || !in_array($entity, array_map('intval', explode(',', getEntity('supplier_order'))), true)) { throw new RuntimeException('native_permission_missing'); }
+			if ($isFulfillment) {
+				$status = (int) ($order->status ?? $order->statut ?? -1);
+				if ($action === 'ORDER_SUPPLIER_RECEIVE' && $status === 7) {
+					$ledger = new LmdbSupplierOrderLimitConsumption($this->db);
+					$ledger->lock($entity);
+					$ledger->release($entity, $id);
+					return 0;
+				}
+				if (($action === 'ORDER_SUPPLIER_RECEIVE' && !in_array($status, array(4,5), true))
+					|| (isset($statusTransitions[$action]) && $status !== $statusTransitions[$action])) {
+					throw new RuntimeException('native_approval_required');
+				}
+				// Receipt permission belongs to core; never reapprove or charge the receiver.
+				return 0;
+			}
 			$ledger = new LmdbSupplierOrderLimitConsumption($this->db);
 			$ledger->lock($entity);
 			$previous = $ledger->entry($entity, $id, true);

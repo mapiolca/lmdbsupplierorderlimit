@@ -72,7 +72,10 @@ if ($action === 'reconcile') {
 		setEventMessages($langs->trans($ambiguous ? 'LimitHistoryIncomplete' : 'RecordSaved'), null, $ambiguous ? 'warnings' : 'mesgs');
 	} catch (Throwable $e) {
 		if ($transactionStarted && !$db->rollback()) { dol_syslog('lmdbsupplierorderlimit reconciliation rollback failed', LOG_ERR); }
-		dol_syslog('lmdbsupplierorderlimit reconciliation failed at '.$stage.' ('.get_class($e).')', LOG_ERR);
+		// Keep diagnostics useful without exposing arbitrary exception text.
+		$reason = in_array($e->getMessage(), array('technical_error', 'invalid_amount', 'transaction_required', 'transaction_start_failed', 'transaction_commit_failed'), true)
+			? $e->getMessage() : 'unexpected_error';
+		dol_syslog('lmdbsupplierorderlimit reconciliation failed at '.$stage.' reason='.$reason.' ('.get_class($e).')', LOG_ERR);
 		setEventMessages($langs->trans('LimitTechnicalError'), null, 'errors');
 	}
 	header('Location: '.$_SERVER['PHP_SELF']);

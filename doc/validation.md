@@ -1,6 +1,6 @@
 # Plafonds multiples — état de validation du développement
 
-Travail local du 22 septembre 2026, à partir de `5e95493`, sans publication ni déploiement. Le descripteur conserve la version publiée `1.0.0` ; ces changements ne constituent pas une nouvelle release. L’historique publié de `ChangeLog.md` est conservé.
+Relevé du travail local du 22 septembre 2026, à partir de `5e95493`, alors sans publication ni déploiement. Les plafonds multiples décrits ici sont intégrés à la version **1.0.2** du 13 octobre 2026 et résumés dans `ChangeLog.md`. Les preuves ci-dessous restent celles des essais datés ; le passage de version ne constitue pas un nouveau test ni une confirmation de déploiement.
 
 ## Implémentation
 
